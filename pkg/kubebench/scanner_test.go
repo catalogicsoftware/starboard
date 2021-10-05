@@ -33,7 +33,7 @@ func TestKubeBenchPlugin_GetScanJobSpec(t *testing.T) {
 			Name: "control-plane",
 		},
 	}
-	instance := kubebench.NewKubeBenchPlugin(fixedClock, config)
+	instance := kubebench.NewKubeBenchPlugin(fixedClock, config, starboard.ServiceAccountName)
 
 	podSpec, err := instance.GetScanJobSpec(node)
 
@@ -188,7 +188,7 @@ func TestKubeBenchPlugin_ParseCISKubeBenchOutput(t *testing.T) {
 				_ = inFile.Close()
 			}()
 
-			instance := kubebench.NewKubeBenchPlugin(fixedClock, config)
+			instance := kubebench.NewKubeBenchPlugin(fixedClock, config, starboard.ServiceAccountName)
 			output, err := instance.ParseCISKubeBenchReportData(inFile)
 
 			switch {

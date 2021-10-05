@@ -214,7 +214,7 @@ func Start(ctx context.Context, buildInfo starboard.BuildInfo, operatorConfig et
 			LogsReader:   logsReader,
 			LimitChecker: limitChecker,
 			ReadWriter:   kubebench.NewReadWriter(mgr.GetClient()),
-			Plugin:       kubebench.NewKubeBenchPlugin(ext.NewSystemClock(), starboardConfig),
+			Plugin:       kubebench.NewKubeBenchPlugin(ext.NewSystemClock(), starboardConfig, starboard.ServiceAccountName),
 		}).SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to setup ciskubebenchreport reconciler: %w", err)
 		}

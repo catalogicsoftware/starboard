@@ -29,11 +29,13 @@ type Config interface {
 }
 
 type Scanner struct {
-	scheme     *runtime.Scheme
-	clientset  kubernetes.Interface
-	opts       kube.ScannerOpts
-	logsReader kube.LogsReader
-	config     starboard.ConfigData
+	scheme             *runtime.Scheme
+	clientset          kubernetes.Interface
+	opts               kube.ScannerOpts
+	logsReader         kube.LogsReader
+	config             starboard.ConfigData
+	namespaceName      string
+	serviceAccountName string
 }
 
 func NewScanner(
@@ -41,13 +43,17 @@ func NewScanner(
 	clientset kubernetes.Interface,
 	config starboard.ConfigData,
 	opts kube.ScannerOpts,
+	namespaceName string,
+	serviceAccountName string,
 ) *Scanner {
 	return &Scanner{
-		scheme:     scheme,
-		clientset:  clientset,
-		logsReader: kube.NewLogsReader(clientset),
-		config:     config,
-		opts:       opts,
+		scheme:             scheme,
+		clientset:          clientset,
+		logsReader:         kube.NewLogsReader(clientset),
+		config:             config,
+		opts:               opts,
+		namespaceName:      namespaceName,
+		serviceAccountName: serviceAccountName,
 	}
 }
 
@@ -147,7 +153,7 @@ func (s *Scanner) prepareKubeHunterJob() (*batchv1.Job, error) {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("scan-kubehunterreports-%s", kube.ComputeHash("cluster")),
-			Namespace: starboard.NamespaceName,
+			Namespace: s.namespaceName,
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:          pointer.Int32Ptr(0),
@@ -158,7 +164,7 @@ func (s *Scanner) prepareKubeHunterJob() (*batchv1.Job, error) {
 					Annotations: scanJobAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: starboard.ServiceAccountName,
+					ServiceAccountName: s.serviceAccountName,
 					RestartPolicy:      corev1.RestartPolicyNever,
 					HostPID:            true,
 					Affinity:           starboard.LinuxNodeAffinity(),

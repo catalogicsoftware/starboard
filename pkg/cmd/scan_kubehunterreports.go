@@ -50,7 +50,7 @@ func ScanKubeHunterReports(cf *genericclioptions.ConfigFlags) func(cmd *cobra.Co
 		if err != nil {
 			return err
 		}
-		scanner := kubehunter.NewScanner(starboard.NewScheme(), kubeClientset, config, opts)
+		scanner := kubehunter.NewScanner(starboard.NewScheme(), kubeClientset, config, opts, starboard.NamespaceName, starboard.ServiceAccountName)
 		report, err := scanner.Scan(ctx)
 		if err != nil {
 			return err
