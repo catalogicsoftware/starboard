@@ -60,8 +60,8 @@ func ScanKubeBenchReports(cf *genericclioptions.ConfigFlags) func(cmd *cobra.Com
 			return err
 		}
 
-		plugin := kubebench.NewKubeBenchPlugin(ext.NewSystemClock(), config)
-		scanner := kubebench.NewScanner(scheme, kubeClientset, plugin, config, opts)
+		plugin := kubebench.NewKubeBenchPlugin(ext.NewSystemClock(), config, starboard.ServiceAccountName)
+		scanner := kubebench.NewScanner(scheme, kubeClientset, plugin, config, opts, starboard.NamespaceName, starboard.ServiceAccountName)
 		writer := kubebench.NewReadWriter(kubeClient)
 
 		nodes, err := GetNodes(ctx, kubeClientset, args...)

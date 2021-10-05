@@ -23,12 +23,14 @@ import (
 )
 
 type Scanner struct {
-	scheme     *runtime.Scheme
-	clientset  kubernetes.Interface
-	logsReader kube.LogsReader
-	plugin     Plugin
-	config     starboard.ConfigData
-	opts       kube.ScannerOpts
+	scheme             *runtime.Scheme
+	clientset          kubernetes.Interface
+	logsReader         kube.LogsReader
+	plugin             Plugin
+	config             starboard.ConfigData
+	opts               kube.ScannerOpts
+	namespaceName      string
+	serviceAccountName string
 }
 
 func NewScanner(
@@ -37,14 +39,18 @@ func NewScanner(
 	plugin Plugin,
 	config starboard.ConfigData,
 	opts kube.ScannerOpts,
+	namespaceName string,
+	serviceAccountName string,
 ) *Scanner {
 	return &Scanner{
-		scheme:     scheme,
-		clientset:  clientset,
-		logsReader: kube.NewLogsReader(clientset),
-		plugin:     plugin,
-		config:     config,
-		opts:       opts,
+		scheme:             scheme,
+		clientset:          clientset,
+		logsReader:         kube.NewLogsReader(clientset),
+		plugin:             plugin,
+		config:             config,
+		opts:               opts,
+		namespaceName:      namespaceName,
+		serviceAccountName: serviceAccountName,
 	}
 }
 
@@ -141,7 +147,7 @@ func (s *Scanner) prepareKubeBenchJob(node corev1.Node) (*batchv1.Job, error) {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "scan-cisbenchmark-" + kube.ComputeHash(node.Name),
-			Namespace: starboard.NamespaceName,
+			Namespace: s.namespaceName,
 			Labels:    labelsSet,
 		},
 		Spec: batchv1.JobSpec{
@@ -168,16 +174,18 @@ type Config interface {
 }
 
 type kubeBenchPlugin struct {
-	clock  ext.Clock
-	config Config
+	clock              ext.Clock
+	config             Config
+	serviceAccountName string
 }
 
 // NewKubeBenchPlugin constructs a new Plugin, which is using an official
 // Kube-Bench container image, with the specified Config.
-func NewKubeBenchPlugin(clock ext.Clock, config Config) Plugin {
+func NewKubeBenchPlugin(clock ext.Clock, config Config, serviceAccountName string) Plugin {
 	return &kubeBenchPlugin{
-		clock:  clock,
-		config: config,
+		clock:              clock,
+		config:             config,
+		serviceAccountName: serviceAccountName,
 	}
 }
 
@@ -187,7 +195,7 @@ func (k *kubeBenchPlugin) GetScanJobSpec(node corev1.Node) (corev1.PodSpec, erro
 		return corev1.PodSpec{}, err
 	}
 	return corev1.PodSpec{
-		ServiceAccountName:           starboard.ServiceAccountName,
+		ServiceAccountName:           k.serviceAccountName,
 		AutomountServiceAccountToken: pointer.BoolPtr(true),
 		RestartPolicy:                corev1.RestartPolicyNever,
 		HostPID:                      true,
