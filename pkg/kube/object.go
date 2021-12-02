@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -81,6 +82,12 @@ func IsClusterScopedKind(k string) bool {
 	}
 }
 
+// PartialObjectToLabels encodes the specified Object as a set of labels.
+//
+// If Object's name cannot be used as the value of the
+// starboard.LabelResourceName label, as a fallback, this method will calculate
+// a hash of the Object's name and use it as the value of the
+// starboard.LabelResourceNameHash label.
 func PartialObjectToLabels(obj Object) map[string]string {
 	labels := map[string]string{
 		starboard.LabelResourceKind:      string(obj.Kind),
@@ -94,6 +101,8 @@ func PartialObjectToLabels(obj Object) map[string]string {
 	return labels
 }
 
+// ObjectToObjectMetadata encodes the specified client.Object as a set of labels
+// and annotations added to the given ObjectMeta.
 func ObjectToObjectMetadata(obj client.Object, meta *metav1.ObjectMeta) error {
 	if meta.Labels == nil {
 		meta.Labels = make(map[string]string)
@@ -130,20 +139,6 @@ func PartialObjectFromObjectMetadata(objectMeta metav1.ObjectMeta) (Object, erro
 		Kind:      Kind(objectMeta.Labels[starboard.LabelResourceKind]),
 		Name:      objname,
 		Namespace: objectMeta.Labels[starboard.LabelResourceNamespace],
-	}, nil
-}
-
-func ObjectFromLabelsSet(set labels.Set) (Object, error) {
-	if !set.Has(starboard.LabelResourceKind) {
-		return Object{}, fmt.Errorf("required label does not exist: %s", starboard.LabelResourceKind)
-	}
-	if !set.Has(starboard.LabelResourceName) {
-		return Object{}, fmt.Errorf("required label does not exist: %s", starboard.LabelResourceName)
-	}
-	return Object{
-		Kind:      Kind(set.Get(starboard.LabelResourceKind)),
-		Name:      set.Get(starboard.LabelResourceName),
-		Namespace: set.Get(starboard.LabelResourceNamespace),
 	}, nil
 }
 
@@ -301,6 +296,133 @@ func (o *ObjectResolver) GetObjectFromPartialObject(ctx context.Context, workloa
 	if err != nil {
 		return nil, err
 	}
+	return o.ensureGVK(obj)
+}
+
+var ErrReplicaSetNotFound = errors.New("replicaset not found")
+
+// ReportOwner resolves the owner of a security report for the specified object.
+func (o *ObjectResolver) ReportOwner(ctx context.Context, obj client.Object) (client.Object, error) {
+	switch obj.(type) {
+	case *appsv1.Deployment:
+		return o.ReplicaSetByDeployment(ctx, obj.(*appsv1.Deployment))
+	case *batchv1.Job:
+		controller := metav1.GetControllerOf(obj)
+		if controller == nil {
+			// Unmanaged Job
+			return obj, nil
+		}
+		if controller.Kind == string(KindCronJob) {
+			return o.CronJobByJob(ctx, obj.(*batchv1.Job))
+		}
+		// Job controlled by sth else (usually frameworks)
+		return obj, nil
+	case *corev1.Pod:
+		controller := metav1.GetControllerOf(obj)
+		if controller == nil {
+			// Unmanaged Pod
+			return obj, nil
+		}
+		if controller.Kind == string(KindReplicaSet) {
+			return o.ReplicaSetByPod(ctx, obj.(*corev1.Pod))
+		}
+		if controller.Kind == string(KindJob) {
+			// Managed by Job or CronJob
+			job, err := o.JobByPod(ctx, obj.(*corev1.Pod))
+			if err != nil {
+				return nil, err
+			}
+			return o.ReportOwner(ctx, job)
+		}
+		// Pod controlled by sth else (usually frameworks)
+		return obj, nil
+	case *appsv1.ReplicaSet, *corev1.ReplicationController, *appsv1.StatefulSet, *appsv1.DaemonSet, *batchv1beta1.CronJob:
+		return obj, nil
+	default:
+		return obj, nil
+	}
+}
+
+// ReplicaSetByDeployment returns the current revision of the specified Deployment.
+// If the current revision cannot be found the ErrReplicaSetNotFound error
+// is returned.
+func (o *ObjectResolver) ReplicaSetByDeployment(ctx context.Context, deploy *appsv1.Deployment) (*appsv1.ReplicaSet, error) {
+	var rsList appsv1.ReplicaSetList
+	err := o.Client.List(ctx, &rsList,
+		client.InNamespace(deploy.Namespace),
+		client.MatchingLabelsSelector{
+			Selector: labels.SelectorFromSet(deploy.Spec.Selector.MatchLabels),
+		})
+	if err != nil {
+		return nil, err
+	}
+	if len(rsList.Items) == 0 {
+		return nil, ErrReplicaSetNotFound
+	}
+	for _, rs := range rsList.Items {
+		if deploy.Annotations["deployment.kubernetes.io/revision"] !=
+			rs.Annotations["deployment.kubernetes.io/revision"] {
+			continue
+		}
+		obj, err := o.ensureGVK(rs.DeepCopy())
+		return obj.(*appsv1.ReplicaSet), err
+	}
+	return nil, ErrReplicaSetNotFound
+}
+
+// ReplicaSetByPod returns the controller ReplicaSet of the specified Pod.
+func (o *ObjectResolver) ReplicaSetByPod(ctx context.Context, pod *corev1.Pod) (*appsv1.ReplicaSet, error) {
+	controller := metav1.GetControllerOf(pod)
+	if controller == nil {
+		return nil, fmt.Errorf("did not find a controller for pod %q", pod.Name)
+	}
+	if controller.Kind != "ReplicaSet" {
+		return nil, fmt.Errorf("pod %q is controlled by a %q, want replicaset", pod.Name, controller.Kind)
+	}
+	rs := &appsv1.ReplicaSet{}
+	err := o.Client.Get(ctx, client.ObjectKey{Namespace: pod.Namespace, Name: controller.Name}, rs)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := o.ensureGVK(rs)
+	return obj.(*appsv1.ReplicaSet), err
+}
+
+func (o *ObjectResolver) CronJobByJob(ctx context.Context, job *batchv1.Job) (*batchv1beta1.CronJob, error) {
+	controller := metav1.GetControllerOf(job)
+	if controller == nil {
+		return nil, fmt.Errorf("did not find a controller for job %q", job.Name)
+	}
+	if controller.Kind != "CronJob" {
+		return nil, fmt.Errorf("pod %q is controlled by a %q, want CronJob", job.Name, controller.Kind)
+	}
+	cj := &batchv1beta1.CronJob{}
+	err := o.Client.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: controller.Name}, cj)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := o.ensureGVK(cj)
+	return obj.(*batchv1beta1.CronJob), err
+}
+
+func (o *ObjectResolver) JobByPod(ctx context.Context, pod *corev1.Pod) (*batchv1.Job, error) {
+	controller := metav1.GetControllerOf(pod)
+	if controller == nil {
+		return nil, fmt.Errorf("did not find a controller for pod %q", pod.Name)
+	}
+	if controller.Kind != "Job" {
+		return nil, fmt.Errorf("pod %q is controlled by a %q, want replicaset", pod.Name, controller.Kind)
+	}
+	rs := &batchv1.Job{}
+	err := o.Client.Get(ctx, client.ObjectKey{Namespace: pod.Namespace, Name: controller.Name}, rs)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := o.ensureGVK(rs)
+	return obj.(*batchv1.Job), err
+}
+
+func (o *ObjectResolver) ensureGVK(obj client.Object) (client.Object, error) {
 	gvk, err := apiutil.GVKForObject(obj, o.Client.Scheme())
 	if err != nil {
 		return nil, err
@@ -330,9 +452,11 @@ func (o *ObjectResolver) getActiveReplicaSetByDeployment(ctx context.Context, ob
 		return "", fmt.Errorf("getting deployment %q: %w", object.Namespace+"/"+object.Name, err)
 	}
 	var rsList appsv1.ReplicaSetList
-	err = o.Client.List(ctx, &rsList, client.MatchingLabelsSelector{
-		Selector: labels.SelectorFromSet(deploy.Spec.Selector.MatchLabels),
-	})
+	err = o.Client.List(ctx, &rsList,
+		client.InNamespace(deploy.Namespace),
+		client.MatchingLabelsSelector{
+			Selector: labels.SelectorFromSet(deploy.Spec.Selector.MatchLabels),
+		})
 	if err != nil {
 		return "", fmt.Errorf("listing replicasets for deployment %q: %w", object.Name, err)
 	}

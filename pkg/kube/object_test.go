@@ -2,7 +2,6 @@ package kube_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -15,7 +14,6 @@ import (
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,65 +57,173 @@ func TestIsBuiltInWorkload(t *testing.T) {
 	}
 }
 
-func TestObjectFromLabelsSet(t *testing.T) {
+func TestIsClusterScopedKind(t *testing.T) {
 	testCases := []struct {
-		name           string
-		labelsSet      labels.Set
-		expectedObject kube.Object
-		expectedError  error
+		kind string
+		want bool
 	}{
 		{
-			name: "Should return object for namespaced object",
-			labelsSet: labels.Set{
-				starboard.LabelResourceKind:      "Deployment",
-				starboard.LabelResourceName:      "my-deployment",
-				starboard.LabelResourceNamespace: "my-namespace",
-			},
-			expectedObject: kube.Object{
-				Kind:      kube.KindDeployment,
-				Name:      "my-deployment",
-				Namespace: "my-namespace",
-			},
+			kind: "Role",
+			want: false,
 		},
 		{
-			name: "Should return object for cluster-scoped object",
-			labelsSet: labels.Set{
-				starboard.LabelResourceKind: "Node",
-				starboard.LabelResourceName: "my-node",
-			},
-			expectedObject: kube.Object{
-				Kind:      kube.KindNode,
-				Name:      "my-node",
-				Namespace: "",
-			},
+			kind: "RoleBinding",
+			want: false,
 		},
 		{
-			name: "Should return error when object kind is not specified as label",
-			labelsSet: labels.Set{
-				starboard.LabelResourceName:      "my-deployment",
-				starboard.LabelResourceNamespace: "my-namespace",
-			},
-			expectedError: errors.New("required label does not exist: starboard.resource.kind"),
+			kind: "ClusterRole",
+			want: true,
 		},
 		{
-			name: "Should return error when object name is not specified as label",
-			labelsSet: labels.Set{
-				starboard.LabelResourceKind: "Deployment",
-			},
-			expectedError: errors.New("required label does not exist: starboard.resource.name"),
+			kind: "ClusterRoleBinding",
+			want: true,
+		},
+		{
+			kind: "CustomResourceDefinition",
+			want: true,
+		},
+		{
+			kind: "Pod",
+			want: false,
 		},
 	}
+	for _, tt := range testCases {
+		t.Run(fmt.Sprintf("Should return %t when controller kind is %s", tt.want, tt.kind), func(t *testing.T) {
+			assert.Equal(t, tt.want, kube.IsClusterScopedKind(tt.kind))
+		})
+	}
+}
 
+func TestPartialObjectToLabels(t *testing.T) {
+	testCases := []struct {
+		name   string
+		object kube.Object
+		labels map[string]string
+	}{
+		{
+			name: "Should map object with simple name",
+			object: kube.Object{
+				Kind:      kube.KindPod,
+				Name:      "my-pod",
+				Namespace: "production",
+			},
+			labels: map[string]string{
+				starboard.LabelResourceKind:      "Pod",
+				starboard.LabelResourceNamespace: "production",
+				starboard.LabelResourceName:      "my-pod",
+			},
+		},
+		{
+			name: "Should map object with name that is not a valid label",
+			object: kube.Object{
+				Kind: kube.KindClusterRole,
+				Name: "system:controller:namespace-controller",
+			},
+			labels: map[string]string{
+				starboard.LabelResourceKind:      "ClusterRole",
+				starboard.LabelResourceNameHash:  kube.ComputeHash("system:controller:namespace-controller"),
+				starboard.LabelResourceNamespace: "",
+			},
+		},
+	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			obj, err := kube.ObjectFromLabelsSet(tc.labelsSet)
-			switch {
-			case tc.expectedError == nil:
-				require.NoError(t, err)
-				assert.Equal(t, tc.expectedObject, obj)
-			default:
-				assert.EqualError(t, err, tc.expectedError.Error())
-			}
+			assert.Equal(t, tc.labels, kube.PartialObjectToLabels(tc.object))
+		})
+	}
+}
+
+func TestObjectToObjectMetadata(t *testing.T) {
+	testCases := []struct {
+		name     string
+		meta     metav1.ObjectMeta
+		object   client.Object
+		expected metav1.ObjectMeta
+	}{
+		{
+			name: "Should map object with simple name",
+			meta: metav1.ObjectMeta{},
+			object: &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-pod",
+					Namespace: "production",
+				},
+			},
+			expected: metav1.ObjectMeta{
+				Labels: map[string]string{
+					starboard.LabelResourceKind:      "Pod",
+					starboard.LabelResourceName:      "my-pod",
+					starboard.LabelResourceNamespace: "production",
+				},
+			},
+		},
+		{
+			name: "Should map object with name that is not a valid label",
+			meta: metav1.ObjectMeta{},
+			object: &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "rbac.authorization.k8s.io/v1",
+					Kind:       "ClusterRole",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "system:controller:node-controller",
+				},
+			},
+			expected: metav1.ObjectMeta{
+				Labels: map[string]string{
+					starboard.LabelResourceKind:      "ClusterRole",
+					starboard.LabelResourceNameHash:  kube.ComputeHash("system:controller:node-controller"),
+					starboard.LabelResourceNamespace: "",
+				},
+				Annotations: map[string]string{
+					starboard.LabelResourceName: "system:controller:node-controller",
+				},
+			},
+		},
+		{
+			name: "Should map object and merge labels and annotations",
+			meta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"foo": "bar",
+				},
+				Annotations: map[string]string{
+					"kee": "pass",
+				},
+			},
+			object: &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "rbac.authorization.k8s.io/v1",
+					Kind:       "ClusterRole",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "system:controller:node-controller",
+				},
+			},
+			expected: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"foo": "bar",
+
+					starboard.LabelResourceKind:      "ClusterRole",
+					starboard.LabelResourceNameHash:  kube.ComputeHash("system:controller:node-controller"),
+					starboard.LabelResourceNamespace: "",
+				},
+				Annotations: map[string]string{
+					"kee": "pass",
+
+					starboard.LabelResourceName: "system:controller:node-controller",
+				},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := kube.ObjectToObjectMetadata(tc.object, &tc.meta)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, tc.meta)
 		})
 	}
 }
@@ -492,43 +598,6 @@ func TestObjectResolver_GetRelatedReplicasetName(t *testing.T) {
 
 }
 
-func TestIsClusterScopedKind(t *testing.T) {
-	testCases := []struct {
-		kind string
-		want bool
-	}{
-		{
-			kind: "Role",
-			want: false,
-		},
-		{
-			kind: "RoleBinding",
-			want: false,
-		},
-		{
-			kind: "ClusterRole",
-			want: true,
-		},
-		{
-			kind: "ClusterRoleBinding",
-			want: true,
-		},
-		{
-			kind: "CustomResourceDefinition",
-			want: true,
-		},
-		{
-			kind: "Pod",
-			want: false,
-		},
-	}
-	for _, tt := range testCases {
-		t.Run(fmt.Sprintf("Should return %t when controller kind is %s", tt.want, tt.kind), func(t *testing.T) {
-			assert.Equal(t, tt.want, kube.IsClusterScopedKind(tt.kind))
-		})
-	}
-}
-
 func TestPartialObjectFromObjectMetadata(t *testing.T) {
 	testCases := []struct {
 		name          string
@@ -649,4 +718,242 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 		})
 	}
 
+}
+
+func TestObjectResolver_ReportOwner(t *testing.T) {
+	nginxDeploy := &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "nginx",
+			Labels: map[string]string{
+				"app": "nginx",
+			},
+			Annotations: map[string]string{
+				"deployment.kubernetes.io/revision": "1",
+			},
+			UID: "734c1370-2281-4946-9b5f-940b33f3e4b8",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: pointer.Int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "nginx",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: corev1.NamespaceDefault,
+					Name:      "nginx",
+					Labels: map[string]string{
+						"app": "nginx",
+					},
+					Annotations: map[string]string{
+						"deployment.kubernetes.io/revision": "1",
+					},
+				},
+			},
+		},
+	}
+	nginxReplicaSet := &appsv1.ReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "nginx-6d4cf56db6",
+			Labels: map[string]string{
+				"app":               "nginx",
+				"pod-template-hash": "6d4cf56db6",
+			},
+			Annotations: map[string]string{
+				"deployment.kubernetes.io/desired-replicas": "1",
+				"deployment.kubernetes.io/max-replicas":     "4",
+				"deployment.kubernetes.io/revision":         "1",
+			},
+			UID: "ecfff877-784c-4f05-8b70-abe441ca1976",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               "Deployment",
+					Name:               "nginx",
+					UID:                "734c1370-2281-4946-9b5f-940b33f3e4b8",
+					Controller:         pointer.BoolPtr(true),
+					BlockOwnerDeletion: pointer.BoolPtr(true),
+				},
+			},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: pointer.Int32(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app":               "nginx",
+					"pod-template-hash": "6d4cf56db6",
+				},
+			},
+		},
+	}
+	nginxPod := &corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Pod",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "nginx-6d4cf56db6-4kw2v",
+			Labels: map[string]string{
+				"app":               "nginx",
+				"pod-template-hash": "6d4cf56db6",
+			},
+			UID: "44ca7a2a-29c5-4510-b503-0218bc9d3308",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               "ReplicaSet",
+					Name:               "nginx-6d4cf56db6",
+					UID:                "ecfff877-784c-4f05-8b70-abe441ca1976",
+					Controller:         pointer.BoolPtr(true),
+					BlockOwnerDeletion: pointer.BoolPtr(true),
+				},
+			},
+		},
+	}
+
+	unmanagedPod := &corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Pod",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "unmanaged",
+			Labels: map[string]string{
+				"run": "unmanaged",
+			},
+			UID: "10641566-209e-4e4d-ac58-a3f3895e0045",
+		},
+	}
+
+	piJob := &batchv1.Job{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "batch/v1",
+			Kind:       "Job",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "pi",
+			UID:       "ef340242-b677-485e-b506-2ac1dde48bca",
+			Labels: map[string]string{
+				"controller-uid": "ef340242-b677-485e-b506-2ac1dde48bca",
+				"job-name":       "pi",
+			},
+		},
+		Spec: batchv1.JobSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"controller-uid": "ef340242 - b677 - 485e-b506-2ac1dde48bca",
+				},
+			},
+		},
+	}
+	piPod := &corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Pod",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "pi-wnbbm",
+			Labels: map[string]string{
+				"controller-uid": "ef340242-b677-485e-b506-2ac1dde48bca",
+				"job-name":       "pi",
+			},
+			UID: "3921e0cd-1852-4c1d-ab0a-9721f3f28276",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "batch/v1",
+					Kind:               "Job",
+					Name:               "pi",
+					UID:                "ef340242-b677-485e-b506-2ac1dde48bca",
+					Controller:         pointer.BoolPtr(true),
+					BlockOwnerDeletion: pointer.BoolPtr(true),
+				},
+			},
+		},
+	}
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "test-config",
+		},
+		Data: map[string]string{
+			"foo": "bar",
+		},
+	}
+
+	testClient := fake.NewClientBuilder().WithScheme(starboard.NewScheme()).WithObjects(
+		nginxDeploy,
+		nginxReplicaSet,
+		nginxPod,
+		unmanagedPod,
+		piJob,
+		piPod,
+		cm,
+	).Build()
+
+	testCases := []struct {
+		name     string
+		resource client.Object
+		owner    client.Object
+	}{
+		{
+			name:     "Should return ReplicaSet for Deployment",
+			resource: nginxDeploy,
+			owner:    nginxReplicaSet,
+		},
+		{
+			name:     "Should return ReplicaSet for ReplicaSet",
+			resource: nginxReplicaSet,
+			owner:    nginxReplicaSet,
+		},
+		{
+			name:     "Should return ReplicaSet for Pod",
+			resource: nginxPod,
+			owner:    nginxReplicaSet,
+		},
+		{
+			name:     "Should return Pod for unmanaged Pod",
+			resource: unmanagedPod,
+			owner:    unmanagedPod,
+		},
+		{
+			name:     "Should return Job for unmanaged Job",
+			resource: piJob,
+			owner:    piJob,
+		},
+		{
+			name:     "Should return Job for Pod",
+			resource: piPod,
+			owner:    piJob,
+		},
+		{
+			name:     "Should return ConfigMap for ConfigMap",
+			resource: cm,
+			owner:    cm,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			or := kube.ObjectResolver{Client: testClient}
+			owner, err := or.ReportOwner(context.TODO(), tc.resource)
+			require.NoError(t, err)
+			assert.Equal(t, tc.owner, owner)
+		})
+	}
 }

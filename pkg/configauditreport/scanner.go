@@ -45,11 +45,24 @@ func NewScanner(
 	}
 }
 
-func (s *Scanner) Scan(ctx context.Context, obj kube.Object) (*ReportBuilder, error) {
-	if !s.plugin.SupportsKind(obj.Kind) {
-		return nil, fmt.Errorf("kind %s is not supported by %s plugin", obj.Kind, s.pluginContext.GetName())
+func (s *Scanner) Scan(ctx context.Context, partial kube.Object) (*ReportBuilder, error) {
+	if !s.supportsKind(partial.Kind) {
+		return nil, fmt.Errorf("kind %s is not supported by %s plugin", partial.Kind, s.pluginContext.GetName())
 	}
-	owner, err := s.objectResolver.GetObjectFromPartialObject(ctx, obj)
+	obj, err := s.objectResolver.GetObjectFromPartialObject(ctx, partial)
+	if err != nil {
+		return nil, err
+	}
+
+	applicable, reason, err := s.plugin.IsApplicable(s.pluginContext, obj)
+	if err != nil {
+		return nil, err
+	}
+	if !applicable {
+		return nil, fmt.Errorf("not applicable: %s", reason)
+	}
+
+	owner, err := s.objectResolver.ReportOwner(ctx, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +78,7 @@ func (s *Scanner) Scan(ctx context.Context, obj kube.Object) (*ReportBuilder, er
 	}
 
 	klog.V(3).Infof("Scanning with options: %+v", s.opts)
-	job, secrets, err := NewScanJob().
+	job, secrets, err := NewScanJobBuilder().
 		WithPlugin(s.plugin).
 		WithPluginContext(s.pluginContext).
 		WithTimeout(s.opts.ScanJobTimeout).
@@ -121,4 +134,13 @@ func (s *Scanner) Scan(ctx context.Context, obj kube.Object) (*ReportBuilder, er
 		ResourceSpecHash(resourceSpecHash).
 		PluginConfigHash(pluginConfigHash).
 		Data(result), nil
+}
+
+func (s *Scanner) supportsKind(kind kube.Kind) bool {
+	for _, k := range s.plugin.SupportedKinds() {
+		if k == kind {
+			return true
+		}
+	}
+	return false
 }

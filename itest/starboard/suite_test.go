@@ -8,6 +8,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/aquasecurity/starboard/itest/helper"
+	"github.com/aquasecurity/starboard/pkg/kube"
 	"github.com/aquasecurity/starboard/pkg/starboard"
 	corev1 "k8s.io/api/core/v1"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1beta1"
@@ -20,6 +22,8 @@ import (
 var (
 	kubeClient             client.Client
 	apiextensionsClientset apiextensions.ApiextensionsV1beta1Interface
+	objectResolver         *kube.ObjectResolver
+	help                   *helper.Helper
 )
 
 var (
@@ -42,7 +46,8 @@ var (
 			Namespace: "starboard",
 		},
 		Data: map[string]string{
-			"conftest.imageRef": "docker.io/openpolicyagent/conftest:v0.25.0",
+			"conftest.imageRef":                  "docker.io/openpolicyagent/conftest:v0.28.2",
+			"conftest.policy.runs_as_root.kinds": "Workload",
 			"conftest.policy.runs_as_root.rego": `
 	package main
     
@@ -99,6 +104,11 @@ var _ = BeforeSuite(func() {
 		Scheme: starboard.NewScheme(),
 	})
 	Expect(err).ToNot(HaveOccurred())
+
+	objectResolver = &kube.ObjectResolver{
+		Client: kubeClient,
+	}
+	help = helper.NewHelper(kubeClient)
 
 	apiextensionsClientset, err = apiextensions.NewForConfig(config)
 	Expect(err).ToNot(HaveOccurred())
