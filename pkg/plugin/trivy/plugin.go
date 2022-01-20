@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -31,6 +32,7 @@ const (
 	keyTrivyIgnoreUnfixed          = "trivy.ignoreUnfixed"
 	keyTrivyIgnoreFile             = "trivy.ignoreFile"
 	keyTrivyInsecureRegistryPrefix = "trivy.insecureRegistry."
+	keyTrivyNonSslRegistryPrefix   = "trivy.nonSslRegistry."
 	keyTrivyMirrorPrefix           = "trivy.registry.mirror."
 	keyTrivyHTTPProxy              = "trivy.httpProxy"
 	keyTrivyHTTPSProxy             = "trivy.httpsProxy"
@@ -106,6 +108,17 @@ func (c Config) GetInsecureRegistries() map[string]bool {
 	return insecureRegistries
 }
 
+func (c Config) GetNonSslRegistries() map[string]bool {
+	nonSslRegistries := make(map[string]bool)
+	for key, val := range c.Data {
+		if strings.HasPrefix(key, keyTrivyNonSslRegistryPrefix) {
+			nonSslRegistries[val] = true
+		}
+	}
+
+	return nonSslRegistries
+}
+
 func (c Config) GetMirrors() map[string]string {
 	res := make(map[string]string)
 	for registryKey, mirror := range c.Data {
@@ -151,7 +164,7 @@ func (c Config) setResourceLimit(configKey string, k8sResourceList *corev1.Resou
 	if value, found := c.Data[configKey]; found {
 		quantity, err := resource.ParseQuantity(value)
 		if err != nil {
-			return fmt.Errorf("parsing resource definition %s: %s %v", configKey, value, err)
+			return fmt.Errorf("parsing resource definition %s: %s %w", configKey, value, err)
 		}
 
 		(*k8sResourceList)[k8sResourceName] = quantity
@@ -195,7 +208,12 @@ func (p *plugin) Init(ctx starboard.PluginContext) error {
 	})
 }
 
-func (p *plugin) GetScanJobSpec(ctx starboard.PluginContext, spec corev1.PodSpec, credentials map[string]docker.Auth) (corev1.PodSpec, []*corev1.Secret, error) {
+func (p *plugin) GetScanJobSpec(ctx starboard.PluginContext, workload client.Object, credentials map[string]docker.Auth) (corev1.PodSpec, []*corev1.Secret, error) {
+	spec, err := kube.GetPodSpec(workload)
+	if err != nil {
+		return corev1.PodSpec{}, nil, err
+	}
+
 	config, err := p.newConfigFrom(ctx)
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
@@ -238,13 +256,13 @@ const (
 // volume shared with main containers. In other words, the init container runs
 // the following Trivy command:
 //
-//     trivy --download-db-only --cache-dir /var/lib/trivy
+//     trivy --cache-dir /var/lib/trivy image --download-db-only
 //
 // The number of main containers correspond to the number of containers
 // defined for the scanned workload. Each container runs the Trivy image scan
 // command and skips the database download:
 //
-//     trivy --skip-update --cache-dir /var/lib/trivy \
+//     trivy --cache-dir /var/lib/trivy image --skip-update \
 //       --format json <container image>
 func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config Config, spec corev1.PodSpec, credentials map[string]docker.Auth) (corev1.PodSpec, []*corev1.Secret, error) {
 	var secret *corev1.Secret
@@ -326,9 +344,10 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 			"trivy",
 		},
 		Args: []string{
-			"--download-db-only",
 			"--cache-dir",
 			"/var/lib/trivy",
+			"image",
+			"--download-db-only",
 		},
 		Resources: requirements,
 		VolumeMounts: []corev1.VolumeMount{
@@ -513,6 +532,11 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 			return corev1.PodSpec{}, nil, err
 		}
 
+		env, err = p.appendTrivyNonSslEnv(config, c.Image, env)
+		if err != nil {
+			return corev1.PodSpec{}, nil, err
+		}
+
 		resourceRequirements, err := config.GetResourceRequirements()
 		if err != nil {
 			return corev1.PodSpec{}, nil, err
@@ -533,10 +557,11 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 				"trivy",
 			},
 			Args: []string{
-				"--skip-update",
 				"--cache-dir",
 				"/var/lib/trivy",
 				"--quiet",
+				"image",
+				"--skip-update",
 				"--format",
 				"json",
 				optionalMirroredImage,
@@ -755,6 +780,11 @@ func (p *plugin) getPodSpecForClientServerMode(ctx starboard.PluginContext, conf
 			return corev1.PodSpec{}, nil, err
 		}
 
+		env, err = p.appendTrivyNonSslEnv(config, container.Image, env)
+		if err != nil {
+			return corev1.PodSpec{}, nil, err
+		}
+
 		if config.IgnoreFileExists() {
 			volumes = []corev1.Volume{
 				{
@@ -842,6 +872,23 @@ func (p *plugin) appendTrivyInsecureEnv(config Config, image string, env []corev
 	if insecureRegistries[ref.Context().RegistryStr()] {
 		env = append(env, corev1.EnvVar{
 			Name:  "TRIVY_INSECURE",
+			Value: "true",
+		})
+	}
+
+	return env, nil
+}
+
+func (p *plugin) appendTrivyNonSslEnv(config Config, image string, env []corev1.EnvVar) ([]corev1.EnvVar, error) {
+	ref, err := name.ParseReference(image)
+	if err != nil {
+		return nil, err
+	}
+
+	nonSslRegistries := config.GetNonSslRegistries()
+	if nonSslRegistries[ref.Context().RegistryStr()] {
+		env = append(env, corev1.EnvVar{
+			Name:  "TRIVY_NON_SSL",
 			Value: "true",
 		})
 	}

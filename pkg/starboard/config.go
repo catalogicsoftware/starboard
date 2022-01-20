@@ -44,7 +44,7 @@ type BuildInfo struct {
 	Executable string
 }
 
-// Scanner represents unique, human readable identifier of a security scanner.
+// Scanner represents unique, human-readable identifier of a security scanner.
 type Scanner string
 
 const (
@@ -57,6 +57,12 @@ const (
 const (
 	keyVulnerabilityReportsScanner = "vulnerabilityReports.scanner"
 	keyConfigAuditReportsScanner   = "configAuditReports.scanner"
+	keyKubeBenchImageRef           = "kube-bench.imageRef"
+	keyKubeHunterImageRef          = "kube-hunter.imageRef"
+	keyKubeHunterQuick             = "kube-hunter.quick"
+	keyScanJobTolerations          = "scanJob.tolerations"
+	keyScanJobAnnotations          = "scanJob.annotations"
+	keyScanJobPodTemplateLabels    = "scanJob.podTemplateLabels"
 )
 
 // ConfigData holds Starboard configuration settings as a set
@@ -80,16 +86,6 @@ func GetDefaultConfig() ConfigData {
 		"kube-hunter.imageRef": "docker.io/aquasec/kube-hunter:0.6.3",
 		"kube-hunter.quick":    "false",
 	}
-}
-
-func (c ConfigData) GetScanJobTolerations() ([]corev1.Toleration, error) {
-	scanJobTolerations := []corev1.Toleration{}
-	if c["scanJob.tolerations"] == "" {
-		return scanJobTolerations, nil
-	}
-	err := json.Unmarshal([]byte(c["scanJob.tolerations"]), &scanJobTolerations)
-
-	return scanJobTolerations, err
 }
 
 func (c ConfigData) GetVulnerabilityReportsScanner() (Scanner, error) {
@@ -127,8 +123,18 @@ func (c ConfigData) GetConfigAuditReportsScanner() (Scanner, error) {
 		value, keyConfigAuditReportsScanner, Polaris, Conftest)
 }
 
+func (c ConfigData) GetScanJobTolerations() ([]corev1.Toleration, error) {
+	var scanJobTolerations []corev1.Toleration
+	if c[keyScanJobTolerations] == "" {
+		return scanJobTolerations, nil
+	}
+	err := json.Unmarshal([]byte(c[keyScanJobTolerations]), &scanJobTolerations)
+
+	return scanJobTolerations, err
+}
+
 func (c ConfigData) GetScanJobAnnotations() (map[string]string, error) {
-	scanJobAnnotationsStr, found := c[AnnotationScanJobAnnotations]
+	scanJobAnnotationsStr, found := c[keyScanJobAnnotations]
 	if !found || strings.TrimSpace(scanJobAnnotationsStr) == "" {
 		return map[string]string{}, nil
 	}
@@ -137,7 +143,7 @@ func (c ConfigData) GetScanJobAnnotations() (map[string]string, error) {
 	for _, annotation := range strings.Split(scanJobAnnotationsStr, ",") {
 		sepByEqual := strings.Split(annotation, "=")
 		if len(sepByEqual) != 2 {
-			return map[string]string{}, fmt.Errorf("custom annotations found to be wrongfully provided: %s", scanJobAnnotationsStr)
+			return map[string]string{}, fmt.Errorf("failed parsing incorrectly formatted custom scan job annotations: %s", scanJobAnnotationsStr)
 		}
 		key, value := sepByEqual[0], sepByEqual[1]
 		scanJobAnnotationsMap[key] = value
@@ -146,16 +152,35 @@ func (c ConfigData) GetScanJobAnnotations() (map[string]string, error) {
 	return scanJobAnnotationsMap, nil
 }
 
+func (c ConfigData) GetScanJobPodTemplateLabels() (labels.Set, error) {
+	scanJobPodTemplateLabelsStr, found := c[keyScanJobPodTemplateLabels]
+	if !found || strings.TrimSpace(scanJobPodTemplateLabelsStr) == "" {
+		return labels.Set{}, nil
+	}
+
+	scanJobPodTemplateLabelsMap := map[string]string{}
+	for _, annotation := range strings.Split(scanJobPodTemplateLabelsStr, ",") {
+		sepByEqual := strings.Split(annotation, "=")
+		if len(sepByEqual) != 2 {
+			return labels.Set{}, fmt.Errorf("failed parsing incorrectly formatted custom scan pod template labels: %s", scanJobPodTemplateLabelsStr)
+		}
+		key, value := sepByEqual[0], sepByEqual[1]
+		scanJobPodTemplateLabelsMap[key] = value
+	}
+
+	return scanJobPodTemplateLabelsMap, nil
+}
+
 func (c ConfigData) GetKubeBenchImageRef() (string, error) {
-	return c.GetRequiredData("kube-bench.imageRef")
+	return c.GetRequiredData(keyKubeBenchImageRef)
 }
 
 func (c ConfigData) GetKubeHunterImageRef() (string, error) {
-	return c.GetRequiredData("kube-hunter.imageRef")
+	return c.GetRequiredData(keyKubeHunterImageRef)
 }
 
 func (c ConfigData) GetKubeHunterQuick() (bool, error) {
-	val, ok := c["kube-hunter.quick"]
+	val, ok := c[keyKubeHunterQuick]
 	if !ok {
 		return false, nil
 	}
