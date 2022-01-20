@@ -94,15 +94,15 @@ func TestIsClusterScopedKind(t *testing.T) {
 	}
 }
 
-func TestPartialObjectToLabels(t *testing.T) {
+func TestObjectRefToLabels(t *testing.T) {
 	testCases := []struct {
 		name   string
-		object kube.Object
+		object kube.ObjectRef
 		labels map[string]string
 	}{
 		{
 			name: "Should map object with simple name",
-			object: kube.Object{
+			object: kube.ObjectRef{
 				Kind:      kube.KindPod,
 				Name:      "my-pod",
 				Namespace: "production",
@@ -115,7 +115,7 @@ func TestPartialObjectToLabels(t *testing.T) {
 		},
 		{
 			name: "Should map object with name that is not a valid label",
-			object: kube.Object{
+			object: kube.ObjectRef{
 				Kind: kube.KindClusterRole,
 				Name: "system:controller:namespace-controller",
 			},
@@ -128,7 +128,7 @@ func TestPartialObjectToLabels(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.labels, kube.PartialObjectToLabels(tc.object))
+			assert.Equal(t, tc.labels, kube.ObjectRefToLabels(tc.object))
 		})
 	}
 }
@@ -242,12 +242,12 @@ func TestContainerImages_AsJSON_And_FromJSON(t *testing.T) {
 	assert.Equal(t, containerImages, newContainerImages)
 }
 
-func TestGetPartialObjectFromKindAndNamespacedName(t *testing.T) {
-	partial := kube.GetPartialObjectFromKindAndNamespacedName(kube.KindReplicaSet, types.NamespacedName{
+func TestObjectRefFromKindAndNamespacedName(t *testing.T) {
+	partial := kube.ObjectRefFromKindAndNamespacedName(kube.KindReplicaSet, types.NamespacedName{
 		Namespace: "prod",
 		Name:      "wordpress",
 	})
-	assert.Equal(t, kube.Object{
+	assert.Equal(t, kube.ObjectRef{
 		Kind:      kube.KindReplicaSet,
 		Name:      "wordpress",
 		Namespace: "prod",
@@ -568,7 +568,7 @@ func TestObjectResolver_GetRelatedReplicasetName(t *testing.T) {
 	).Build()}
 
 	t.Run("Should return error for unsupported kind", func(t *testing.T) {
-		_, err := instance.GetRelatedReplicasetName(context.Background(), kube.Object{
+		_, err := instance.GetRelatedReplicasetName(context.Background(), kube.ObjectRef{
 			Kind:      kube.KindStatefulSet,
 			Name:      "statefulapp",
 			Namespace: corev1.NamespaceDefault,
@@ -577,7 +577,7 @@ func TestObjectResolver_GetRelatedReplicasetName(t *testing.T) {
 	})
 
 	t.Run("Should return ReplicaSet name for the specified Deployment", func(t *testing.T) {
-		name, err := instance.GetRelatedReplicasetName(context.Background(), kube.Object{
+		name, err := instance.GetRelatedReplicasetName(context.Background(), kube.ObjectRef{
 			Kind:      kube.KindDeployment,
 			Name:      "nginx",
 			Namespace: corev1.NamespaceDefault,
@@ -587,7 +587,7 @@ func TestObjectResolver_GetRelatedReplicasetName(t *testing.T) {
 	})
 
 	t.Run("Should return ReplicaSet name for the specified Deployment", func(t *testing.T) {
-		name, err := instance.GetRelatedReplicasetName(context.Background(), kube.Object{
+		name, err := instance.GetRelatedReplicasetName(context.Background(), kube.ObjectRef{
 			Kind:      kube.KindPod,
 			Name:      "nginx-549f5fcb58-7cr5b",
 			Namespace: corev1.NamespaceDefault,
@@ -598,11 +598,11 @@ func TestObjectResolver_GetRelatedReplicasetName(t *testing.T) {
 
 }
 
-func TestPartialObjectFromObjectMetadata(t *testing.T) {
+func TestObjectRefFromObjectMeta(t *testing.T) {
 	testCases := []struct {
 		name          string
 		object        metav1.ObjectMeta
-		expected      kube.Object
+		expected      kube.ObjectRef
 		expectedError string
 	}{
 		{
@@ -617,7 +617,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 					starboard.LabelResourceName: "system:admin",
 				},
 			},
-			expected: kube.Object{Kind: kube.KindRole, Name: "system:admin", Namespace: "kube-system"},
+			expected: kube.ObjectRef{Kind: kube.KindRole, Name: "system:admin", Namespace: "kube-system"},
 		},
 		{
 			name: "Test RoleBinding",
@@ -631,7 +631,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 					starboard.LabelResourceName: "system:admin:binding",
 				},
 			},
-			expected: kube.Object{Kind: kube.KindRoleBinding, Name: "system:admin:binding", Namespace: "kube-system"},
+			expected: kube.ObjectRef{Kind: kube.KindRoleBinding, Name: "system:admin:binding", Namespace: "kube-system"},
 		},
 		{
 			name: "Kind ClusterRole",
@@ -645,7 +645,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 					starboard.LabelResourceName: "system:netnode",
 				},
 			},
-			expected: kube.Object{Kind: kube.KindClusterRole, Name: "system:netnode"},
+			expected: kube.ObjectRef{Kind: kube.KindClusterRole, Name: "system:netnode"},
 		},
 		{
 			name: "Kind ClusterRoleBinding",
@@ -659,7 +659,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 					starboard.LabelResourceName: "system:netnode:binding",
 				},
 			},
-			expected: kube.Object{Kind: kube.KindClusterRoleBindings, Name: "system:netnode:binding"},
+			expected: kube.ObjectRef{Kind: kube.KindClusterRoleBindings, Name: "system:netnode:binding"},
 		},
 		{
 			name: "Kind Pod",
@@ -670,7 +670,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 					starboard.LabelResourceName:      "nginx-pod",
 				},
 			},
-			expected: kube.Object{Kind: kube.KindPod, Name: "nginx-pod", Namespace: "default"},
+			expected: kube.ObjectRef{Kind: kube.KindPod, Name: "nginx-pod", Namespace: "default"},
 		},
 		{
 			name: "Kind Deployment",
@@ -681,7 +681,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 					starboard.LabelResourceName:      "nginx-deployment",
 				},
 			},
-			expected: kube.Object{Kind: kube.KindDeployment, Name: "nginx-deployment", Namespace: "default"},
+			expected: kube.ObjectRef{Kind: kube.KindDeployment, Name: "nginx-deployment", Namespace: "default"},
 		},
 		{
 			name: "Kind DaemonSet",
@@ -692,7 +692,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 					starboard.LabelResourceName:      "nginx-ds",
 				},
 			},
-			expected: kube.Object{Kind: kube.KindDaemonSet, Name: "nginx-ds", Namespace: "default"},
+			expected: kube.ObjectRef{Kind: kube.KindDaemonSet, Name: "nginx-ds", Namespace: "default"},
 		},
 		{
 			name: fmt.Sprintf("Should return error when %s label is missing", starboard.LabelResourceKind),
@@ -708,7 +708,7 @@ func TestPartialObjectFromObjectMetadata(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := kube.PartialObjectFromObjectMetadata(tc.object)
+			actual, err := kube.ObjectRefFromObjectMeta(tc.object)
 			if tc.expectedError == "" {
 				require.NoError(t, err)
 				assert.Equal(t, tc.expected, actual)
@@ -954,6 +954,187 @@ func TestObjectResolver_ReportOwner(t *testing.T) {
 			owner, err := or.ReportOwner(context.TODO(), tc.resource)
 			require.NoError(t, err)
 			assert.Equal(t, tc.owner, owner)
+		})
+	}
+}
+
+func TestObjectResolver_IsActiveReplicaSet(t *testing.T) {
+	nginxDeploy := &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "nginx",
+			Labels: map[string]string{
+				"app": "nginx",
+			},
+			Annotations: map[string]string{
+				"deployment.kubernetes.io/revision": "1",
+			},
+			UID: "734c1370-2281-4946-9b5f-940b33f3e4b8",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: pointer.Int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "nginx",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: corev1.NamespaceDefault,
+					Name:      "nginx",
+					Labels: map[string]string{
+						"app": "nginx",
+					},
+					Annotations: map[string]string{
+						"deployment.kubernetes.io/revision": "1",
+					},
+				},
+			},
+		},
+	}
+	nginxReplicaSet := &appsv1.ReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "nginx-6d4cf56db6",
+			Labels: map[string]string{
+				"app":               "nginx",
+				"pod-template-hash": "6d4cf56db6",
+			},
+			Annotations: map[string]string{
+				"deployment.kubernetes.io/desired-replicas": "1",
+				"deployment.kubernetes.io/max-replicas":     "4",
+				"deployment.kubernetes.io/revision":         "1",
+			},
+			UID: "ecfff877-784c-4f05-8b70-abe441ca1976",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               "Deployment",
+					Name:               "nginx",
+					UID:                "734c1370-2281-4946-9b5f-940b33f3e4b8",
+					Controller:         pointer.BoolPtr(true),
+					BlockOwnerDeletion: pointer.BoolPtr(true),
+				},
+			},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: pointer.Int32(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app":               "nginx",
+					"pod-template-hash": "6d4cf56db6",
+				},
+			},
+		},
+	}
+	notActiveNginxReplicaSet := &appsv1.ReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "nginx-f88799b98",
+			Labels: map[string]string{
+				"app":               "nginx",
+				"pod-template-hash": "f88799b98",
+			},
+			Annotations: map[string]string{
+				"deployment.kubernetes.io/desired-replicas": "1",
+				"deployment.kubernetes.io/max-replicas":     "4",
+				"deployment.kubernetes.io/revision":         "2",
+			},
+			UID: "6fd87db4-d557-4b84-92b7-653c3f4e5c7d",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               "Deployment",
+					Name:               "nginx",
+					UID:                "734c1370-2281-4946-9b5f-940b33f3e4b8",
+					Controller:         pointer.BoolPtr(true),
+					BlockOwnerDeletion: pointer.BoolPtr(true),
+				},
+			},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: pointer.Int32(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app":               "nginx",
+					"pod-template-hash": "f88799b98",
+				},
+			},
+		},
+	}
+	standAloneNginxReplicaSet := &appsv1.ReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: corev1.NamespaceDefault,
+			Name:      "nginx-d54df7dc7",
+			Labels: map[string]string{
+				"app":               "nginx",
+				"pod-template-hash": "d54df7dc7",
+			},
+			Annotations: map[string]string{
+				"deployment.kubernetes.io/desired-replicas": "1",
+				"deployment.kubernetes.io/max-replicas":     "4",
+			},
+			UID: "0eed5ccf-4518-4ae7-933e-cafded6cf356",
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: pointer.Int32(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app":               "nginx",
+					"pod-template-hash": "d54df7dc7",
+				},
+			},
+		},
+	}
+	testClient := fake.NewClientBuilder().WithScheme(starboard.NewScheme()).WithObjects(
+		nginxDeploy,
+		nginxReplicaSet,
+		notActiveNginxReplicaSet,
+	).Build()
+	testCases := []struct {
+		name     string
+		resource *appsv1.ReplicaSet
+		result   bool
+	}{
+		{
+			name:     "activeReplicaset",
+			resource: nginxReplicaSet,
+			result:   true,
+		},
+		{
+			name:     "noneActiveReplicaset",
+			resource: notActiveNginxReplicaSet,
+			result:   false,
+		},
+		{
+			name:     "standAloneReplicaset",
+			resource: standAloneNginxReplicaSet,
+			result:   true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			or := kube.ObjectResolver{Client: testClient}
+			controller := metav1.GetControllerOf(tc.resource)
+			isActive, err := or.IsActiveReplicaSet(context.TODO(), tc.resource, controller)
+			require.NoError(t, err)
+			assert.Equal(t, isActive, tc.result)
 		})
 	}
 }

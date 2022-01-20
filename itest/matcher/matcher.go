@@ -1,10 +1,10 @@
 package matcher
 
 import (
+	"fmt"
+
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
-
-	"fmt"
 
 	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
 	"github.com/aquasecurity/starboard/pkg/kube"
@@ -109,7 +109,7 @@ func (m *vulnerabilityReportMatcher) objectToLabelsAsMatchKeys(obj client.Object
 		kind = gvk.Kind
 	}
 
-	labels := kube.PartialObjectToLabels(kube.Object{
+	labels := kube.ObjectRefToLabels(kube.ObjectRef{
 		Kind:      kube.Kind(kind),
 		Name:      obj.GetName(),
 		Namespace: obj.GetNamespace(),

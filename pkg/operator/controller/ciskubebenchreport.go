@@ -130,7 +130,7 @@ func (r *CISKubeBenchReportReconciler) reconcileNodes() reconcile.Func {
 }
 
 func (r *CISKubeBenchReportReconciler) hasReport(ctx context.Context, node *corev1.Node) (bool, error) {
-	report, err := r.ReadWriter.FindByOwner(ctx, kube.Object{Kind: kube.KindNode, Name: node.Name})
+	report, err := r.ReadWriter.FindByOwner(ctx, kube.ObjectRef{Kind: kube.KindNode, Name: node.Name})
 	if err != nil {
 		return false, err
 	}
@@ -169,16 +169,31 @@ func (r *CISKubeBenchReportReconciler) newScanJob(node *corev1.Node) (*batchv1.J
 		return nil, err
 	}
 
+	scanJobPodTemplateLabels, err := r.ConfigData.GetScanJobPodTemplateLabels()
+	if err != nil {
+		return nil, err
+	}
+
+	labelsSet := labels.Set{
+		starboard.LabelResourceKind:           string(kube.KindNode),
+		starboard.LabelResourceName:           node.Name,
+		starboard.LabelK8SAppManagedBy:        starboard.AppStarboard,
+		starboard.LabelKubeBenchReportScanner: "true",
+	}
+
+	podTemplateLabelsSet := make(labels.Set)
+	for index, element := range labelsSet {
+		podTemplateLabelsSet[index] = element
+	}
+	for index, element := range scanJobPodTemplateLabels {
+		podTemplateLabelsSet[index] = element
+	}
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.getScanJobName(node),
 			Namespace: r.Config.Namespace,
-			Labels: labels.Set{
-				starboard.LabelResourceKind:           string(kube.KindNode),
-				starboard.LabelResourceName:           node.Name,
-				starboard.LabelK8SAppManagedBy:        starboard.AppStarboard,
-				starboard.LabelKubeBenchReportScanner: "true",
-			},
+			Labels:    labelsSet,
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:          pointer.Int32Ptr(0),
@@ -186,12 +201,7 @@ func (r *CISKubeBenchReportReconciler) newScanJob(node *corev1.Node) (*batchv1.J
 			ActiveDeadlineSeconds: kube.GetActiveDeadlineSeconds(r.Config.ScanJobTimeout),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels.Set{
-						starboard.LabelResourceKind:           string(kube.KindNode),
-						starboard.LabelResourceName:           node.Name,
-						starboard.LabelK8SAppManagedBy:        starboard.AppStarboard,
-						starboard.LabelKubeBenchReportScanner: "true",
-					},
+					Labels:      podTemplateLabelsSet,
 					Annotations: scanJobAnnotations,
 				},
 				Spec: templateSpec,
@@ -240,7 +250,7 @@ func (r *CISKubeBenchReportReconciler) reconcileJobs() reconcile.Func {
 func (r *CISKubeBenchReportReconciler) processCompleteScanJob(ctx context.Context, job *batchv1.Job) error {
 	log := r.Logger.WithValues("job", fmt.Sprintf("%s/%s", job.Namespace, job.Name))
 
-	nodeRef, err := kube.PartialObjectFromObjectMetadata(job.ObjectMeta)
+	nodeRef, err := kube.ObjectRefFromObjectMeta(job.ObjectMeta)
 	if err != nil {
 		return fmt.Errorf("getting owner ref from scan job metadata: %w", err)
 	}

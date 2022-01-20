@@ -45,11 +45,11 @@ func NewScanner(
 	}
 }
 
-func (s *Scanner) Scan(ctx context.Context, partial kube.Object) (*ReportBuilder, error) {
+func (s *Scanner) Scan(ctx context.Context, partial kube.ObjectRef) (*ReportBuilder, error) {
 	if !s.supportsKind(partial.Kind) {
 		return nil, fmt.Errorf("kind %s is not supported by %s plugin", partial.Kind, s.pluginContext.GetName())
 	}
-	obj, err := s.objectResolver.GetObjectFromPartialObject(ctx, partial)
+	obj, err := s.objectResolver.ObjectFromObjectRef(ctx, partial)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +77,11 @@ func (s *Scanner) Scan(ctx context.Context, partial kube.Object) (*ReportBuilder
 		return nil, fmt.Errorf("getting scan job annotations: %w", err)
 	}
 
+	scanJobPodTemplateLabels, err := s.config.GetScanJobPodTemplateLabels()
+	if err != nil {
+		return nil, fmt.Errorf("getting scan job template labels: %w", err)
+	}
+
 	klog.V(3).Infof("Scanning with options: %+v", s.opts)
 	job, secrets, err := NewScanJobBuilder().
 		WithPlugin(s.plugin).
@@ -85,6 +90,7 @@ func (s *Scanner) Scan(ctx context.Context, partial kube.Object) (*ReportBuilder
 		WithObject(owner).
 		WithTolerations(scanJobTolerations).
 		WithAnnotations(scanJobAnnotations).
+		WithPodTemplateLabels(scanJobPodTemplateLabels).
 		Get()
 	if err != nil {
 		return nil, fmt.Errorf("constructing scan job: %w", err)
