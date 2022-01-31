@@ -132,8 +132,9 @@ func (s *Scanner) prepareKubeBenchJob(node corev1.Node) (*batchv1.Job, error) {
 	}
 
 	labelsSet := labels.Set{
-		starboard.LabelResourceKind: string(kube.KindNode),
-		starboard.LabelResourceName: node.Name,
+		starboard.LabelResourceKind:    string(kube.KindNode),
+		starboard.LabelResourceName:    node.Name,
+		starboard.LabelK8SAppManagedBy: starboard.AppStarboard,
 	}
 
 	podTemplateLabelsSet := make(labels.Set)
