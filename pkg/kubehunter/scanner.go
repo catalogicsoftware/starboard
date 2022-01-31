@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -128,6 +129,18 @@ func (s *Scanner) prepareKubeHunterJob() (*batchv1.Job, error) {
 		return nil, err
 	}
 
+	labelsSet := labels.Set{
+		starboard.LabelK8SAppManagedBy: starboard.AppStarboard,
+	}
+
+	podTemplateLabelsSet := make(labels.Set)
+	for key, element := range labelsSet {
+		podTemplateLabelsSet[key] = element
+	}
+	for key, element := range scanJobPodTemplateLabels {
+		podTemplateLabelsSet[key] = element
+	}
+
 	var (
 		podSecurityContext       *corev1.PodSecurityContext
 		containerSecurityContext *corev1.SecurityContext
@@ -167,7 +180,7 @@ func (s *Scanner) prepareKubeHunterJob() (*batchv1.Job, error) {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: scanJobAnnotations,
-					Labels:      scanJobPodTemplateLabels,
+					Labels:      podTemplateLabelsSet,
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: s.serviceAccountName,
