@@ -51,7 +51,7 @@ These guidelines will help you get started with the Starboard project.
 
 1. Install Go
 
-   The project requires [Go 1.16][go-download] or later. We also assume that you're familiar with
+   The project requires [Go 1.17][go-download] or later. We also assume that you're familiar with
    Go's [GOPATH workspace][go-code] convention, and have the appropriate environment variables set.
 2. Get the source code:
 
@@ -69,7 +69,7 @@ These guidelines will help you get started with the Starboard project.
 ## Build Binaries
 
 | Binary                   | Image                                          | Description                                                   |
-| ------------------------ | ---------------------------------------------- | ------------------------------------------------------------- |
+|--------------------------|------------------------------------------------|---------------------------------------------------------------|
 | `starboard`              | `docker.io/aquasec/starboard:dev`              | Starboard command-line interface                              |
 | `starboard-operator`     | `docker.io/aquasec/starboard-operator:dev`     | Starboard Operator                                            |
 | `starboard-scanner-aqua` | `docker.io/aquasec/starboard-scanner-aqua:dev` | Starboard plugin to integrate with Aqua vulnerability scanner |
@@ -144,7 +144,7 @@ To run the integration tests for Starboard Operator and view the coverage report
 [prerequisite steps](#prerequisites), and then run:
 
 ```
-OPERATOR_NAMESPACE=starboard-operator \
+OPERATOR_NAMESPACE=starboard-system \
   OPERATOR_TARGET_NAMESPACES=default \
   OPERATOR_LOG_DEV_MODE=true \
   make itests-starboard-operator
