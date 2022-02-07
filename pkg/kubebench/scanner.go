@@ -268,12 +268,12 @@ func (k *kubeBenchPlugin) GetScanJobSpec(node corev1.Node) (corev1.PodSpec, erro
 				},
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("300m"),
-						corev1.ResourceMemory: resource.MustParse("300M"),
+						corev1.ResourceCPU:    resource.MustParse("600m"),
+						corev1.ResourceMemory: resource.MustParse("512M"),
 					},
 					Requests: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("50m"),
-						corev1.ResourceMemory: resource.MustParse("50M"),
+						corev1.ResourceCPU:    resource.MustParse("150m"),
+						corev1.ResourceMemory: resource.MustParse("128M"),
 					},
 				},
 				VolumeMounts: []corev1.VolumeMount{

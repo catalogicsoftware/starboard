@@ -200,10 +200,10 @@ func (p *plugin) Init(ctx starboard.PluginContext) error {
 			keyTrivySeverity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
 			keyTrivyMode:     string(Standalone),
 
-			keyResourcesRequestsCPU:    "100m",
-			keyResourcesRequestsMemory: "100M",
-			keyResourcesLimitsCPU:      "500m",
-			keyResourcesLimitsMemory:   "500M",
+			keyResourcesRequestsCPU:    "150m",
+			keyResourcesRequestsMemory: "128M",
+			keyResourcesLimitsCPU:      "600m",
+			keyResourcesLimitsMemory:   "512M",
 		},
 	})
 }

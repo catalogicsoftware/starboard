@@ -311,10 +311,10 @@ func (p *plugin) Init(ctx starboard.PluginContext) error {
 		Data: map[string]string{
 			keyImageRef:                "quay.io/fairwinds/polaris:4.2",
 			keyConfigYaml:              DefaultConfigYAML,
-			keyResourcesRequestsCPU:    "50m",
-			keyResourcesRequestsMemory: "50M",
-			keyResourcesLimitsCPU:      "300m",
-			keyResourcesLimitsMemory:   "300M",
+			keyResourcesRequestsCPU:    "150m",
+			keyResourcesRequestsMemory: "128M",
+			keyResourcesLimitsCPU:      "600m",
+			keyResourcesLimitsMemory:   "512M",
 		},
 	})
 }
