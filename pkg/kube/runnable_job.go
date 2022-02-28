@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -136,10 +135,12 @@ func (r *runnableJob) Run(ctx context.Context) error {
 			}
 		},
 	})
-
-	informerFactory.Start(wait.NeverStop)
-	informerFactory.WaitForCacheSync(wait.NeverStop)
-
+	// informer will stop only if stopper channel
+	// gets closed. This prevents memory leak.
+	stopper := make(chan struct{})
+	defer close(stopper)
+	informerFactory.Start(stopper)
+	informerFactory.WaitForCacheSync(stopper)
 	err = <-complete
 
 	if err != nil {
