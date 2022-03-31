@@ -308,14 +308,30 @@ func (p *plugin) IsApplicable(_ starboard.PluginContext, _ client.Object) (bool,
 // Init ensures the default Config required by this plugin.
 func (p *plugin) Init(ctx starboard.PluginContext) error {
 	return ctx.EnsureConfig(starboard.PluginConfig{
-		Data: map[string]string{
-			keyImageRef:                "quay.io/fairwinds/polaris:4.2",
-			keyConfigYaml:              DefaultConfigYAML,
-			keyResourcesRequestsCPU:    "150m",
-			keyResourcesRequestsMemory: "128M",
-			keyResourcesLimitsCPU:      "600m",
-			keyResourcesLimitsMemory:   "512M",
-		},
+		Data: p.getDefaultConfig(),
+	})
+}
+
+func (p *plugin) getDefaultConfig() starboard.ConfigData {
+	return map[string]string{
+		keyImageRef:                "quay.io/fairwinds/polaris:4.2",
+		keyConfigYaml:              DefaultConfigYAML,
+		keyResourcesRequestsCPU:    "150m",
+		keyResourcesRequestsMemory: "128M",
+		keyResourcesLimitsCPU:      "600m",
+		keyResourcesLimitsMemory:   "512M",
+	}
+}
+
+func (p *plugin) InitWithConfig(ctx starboard.PluginContext, config starboard.ConfigData) error {
+	// provided config overrides default config
+	effectiveConfig := p.getDefaultConfig()
+	for key, value := range config {
+		effectiveConfig[key] = value
+	}
+
+	return ctx.EnsureConfig(starboard.PluginConfig{
+		Data: effectiveConfig,
 	})
 }
 

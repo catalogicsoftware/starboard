@@ -39,6 +39,11 @@ func (s *plugin) Init(_ starboard.PluginContext) error {
 	return nil
 }
 
+func (s *plugin) InitWithConfig(_ starboard.PluginContext, _ starboard.ConfigData) error {
+	// Do nothing
+	return nil
+}
+
 func (s *plugin) GetScanJobSpec(ctx starboard.PluginContext, workload client.Object, _ map[string]docker.Auth) (corev1.PodSpec, []*corev1.Secret, error) {
 	spec, err := kube.GetPodSpec(workload)
 	if err != nil {
