@@ -251,18 +251,35 @@ func NewPlugin(clock ext.Clock, idGenerator ext.IDGenerator, client client.Clien
 // Init ensures the default Config required by this plugin.
 func (p *plugin) Init(ctx starboard.PluginContext) error {
 	return ctx.EnsureConfig(starboard.PluginConfig{
-		Data: map[string]string{
-			keyTrivyImageRef:     "docker.io/aquasec/trivy:0.25.2",
-			keyTrivySeverity:     "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-			keyTrivyMode:         string(Standalone),
-			keyTrivyTimeout:      "5m0s",
-			keyTrivyDBRepository: defaultDBRepository,
+		Data: p.getDefaultConfig(),
+	})
+}
 
-			keyResourcesRequestsCPU:    "100m",
-			keyResourcesRequestsMemory: "100M",
-			keyResourcesLimitsCPU:      "500m",
-			keyResourcesLimitsMemory:   "500M",
-		},
+func (p *plugin) getDefaultConfig() starboard.ConfigData {
+	return map[string]string{
+		keyTrivyImageRef:     "docker.io/aquasec/trivy:0.25.2",
+		keyTrivySeverity:     "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
+		keyTrivyMode:         string(Standalone),
+		keyTrivyTimeout:      "5m0s",
+		keyTrivyDBRepository: defaultDBRepository,
+
+		keyResourcesRequestsCPU:    "100m",
+		keyResourcesRequestsMemory: "100M",
+		keyResourcesLimitsCPU:      "500m",
+		keyResourcesLimitsMemory:   "500M",
+	}
+}
+
+// Init ensures the default Config required by this plugin.
+func (p *plugin) InitWithConfig(ctx starboard.PluginContext, config starboard.ConfigData) error {
+	// provided config overrides default config
+	effectiveConfig := p.getDefaultConfig()
+	for key, value := range config {
+		effectiveConfig[key] = value
+	}
+
+	return ctx.EnsureConfig(starboard.PluginConfig{
+		Data: effectiveConfig,
 	})
 }
 

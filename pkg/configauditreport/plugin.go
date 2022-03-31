@@ -18,6 +18,10 @@ type Plugin interface {
 	// configuration.
 	Init(ctx starboard.PluginContext) error
 
+	// Init is a callback to initialize this plugin, with config provided.
+	// i.e, creates a configmap to store config
+	InitWithConfig(ctx starboard.PluginContext, config starboard.ConfigData) error
+
 	// GetScanJobSpec describes the pod that will be created by Starboard when
 	// it schedules a Kubernetes job to scan the specified workload client.Object.
 	// The plugin might return zero to many v1.Secret objects which will be

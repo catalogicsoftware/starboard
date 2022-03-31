@@ -218,6 +218,10 @@ func (p *plugin) Init(ctx starboard.PluginContext) error {
 	})
 }
 
+func (p *plugin) InitWithConfig(ctx starboard.PluginContext, _ starboard.ConfigData) error {
+	return p.Init(ctx)
+}
+
 func (p *plugin) ConfigHash(ctx starboard.PluginContext, kind kube.Kind) (string, error) {
 	config, err := p.newConfigFrom(ctx)
 	if err != nil {
