@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aquasecurity/starboard/pkg/runner"
@@ -90,6 +91,7 @@ func (r *runnableJob) Run(ctx context.Context) error {
 	}
 
 	complete := make(chan error)
+	var podName string
 
 	jobsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(_, newObj interface{}) {
@@ -118,19 +120,26 @@ func (r *runnableJob) Run(ctx context.Context) error {
 		AddFunc: func(obj interface{}) {
 			event := obj.(*corev1.Event)
 
-			// TODO We might want to look into events associate with the pod controlled by the current scan job.
+			// We might want to look into events associate with the pod controlled by the current scan job.
 			// For example, when a pod cannot be scheduled due to insufficient resource requests,
 			// the event will be attached to the pod, not the job.
-			if event.InvolvedObject.UID != r.job.UID {
+			if event.InvolvedObject.UID != r.job.UID && event.InvolvedObject.Name != podName {
 				return
 			}
 
 			if event.Type == corev1.EventTypeNormal {
 				klog.V(3).Infof("Event: %s (%s)", event.Message, event.Reason)
+				if event.Reason == "SuccessfulCreate" && event.InvolvedObject.UID == r.job.UID {
+					// Created pod: scan-vulnerabilityreport-5f945cbb95-m44px
+					msgParts := strings.Split(event.Message, "Created pod: ")
+					if len(msgParts) >= 2 {
+						podName = msgParts[1]
+					}
+				}
 			}
 
 			if event.Type == corev1.EventTypeWarning {
-				complete <- fmt.Errorf("warning event received: %s (%s)", event.Message, event.Reason)
+				complete <- fmt.Errorf("warning event: %s (%s)", event.Message, event.Reason)
 				return
 			}
 		},
@@ -144,16 +153,22 @@ func (r *runnableJob) Run(ctx context.Context) error {
 	err = <-complete
 
 	if err != nil {
-		r.logTerminatedContainersErrors(ctx)
+		containerErr := r.getTerminatedContainersErrors(ctx)
+		if containerErr != nil {
+			return fmt.Errorf("%v, containerErr: %w", err, containerErr)
+		} else {
+			return err
+		}
 	}
 
-	return err
+	return nil
 }
 
-func (r *runnableJob) logTerminatedContainersErrors(ctx context.Context) {
+func (r *runnableJob) getTerminatedContainersErrors(ctx context.Context) error {
 	statuses, err := r.logsReader.GetTerminatedContainersStatusesByJob(ctx, r.job)
 	if err != nil {
 		klog.Errorf("Error while getting terminated containers statuses for job %q", r.job.Namespace+"/"+r.job.Name)
+		return fmt.Errorf("error while getting terminated containers statuses for job %q", r.job.Namespace+"/"+r.job.Name)
 	}
 
 	for container, status := range statuses {
@@ -161,7 +176,9 @@ func (r *runnableJob) logTerminatedContainersErrors(ctx context.Context) {
 			continue
 		}
 		klog.Errorf("Container %s terminated with %s: %s", container, status.Reason, status.Message)
+		return fmt.Errorf("container %s terminated with %s: %s", container, status.Reason, status.Message)
 	}
+	return nil
 }
 
 func GetActiveDeadlineSeconds(d time.Duration) *int64 {
