@@ -151,7 +151,7 @@ func (r *CISKubeBenchReportReconciler) hasScanJob(ctx context.Context, node *cor
 }
 
 func (r *CISKubeBenchReportReconciler) newScanJob(node *corev1.Node) (*batchv1.Job, error) {
-	templateSpec, err := r.Plugin.GetScanJobSpec(*node)
+	templateSpec, err := r.Plugin.GetScanJobSpec(*node, corev1.ResourceRequirements{})
 	if err != nil {
 		return nil, err
 	}

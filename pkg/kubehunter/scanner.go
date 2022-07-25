@@ -21,7 +21,11 @@ import (
 )
 
 const (
-	kubeHunterContainerName = "kube-hunter"
+	kubeHunterContainerName    = "kube-hunter"
+	keyResourcesRequestsCPU    = "kh.resources.requests.cpu"
+	keyResourcesRequestsMemory = "kh.resources.requests.memory"
+	keyResourcesLimitsCPU      = "kh.resources.limits.cpu"
+	keyResourcesLimitsMemory   = "kh.resources.limits.memory"
 )
 
 type Config interface {
@@ -168,6 +172,11 @@ func (s *Scanner) prepareKubeHunterJob() (*batchv1.Job, error) {
 		}
 	}
 
+	resourceRequirements, err := s.getResourceRequirements(s.config)
+	if err != nil {
+		return nil, err
+	}
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("scan-kubehunterreports-%s", kube.ComputeHash("cluster")),
@@ -197,22 +206,60 @@ func (s *Scanner) prepareKubeHunterJob() (*batchv1.Job, error) {
 							TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 							Args:                     kubeHunterArgs,
 							SecurityContext:          containerSecurityContext,
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("300m"),
-									corev1.ResourceMemory: resource.MustParse("400M"),
-								},
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("50m"),
-									corev1.ResourceMemory: resource.MustParse("100M"),
-								},
-							},
+							Resources:                resourceRequirements,
 						},
 					},
 				},
 			},
 		},
 	}, nil
+}
+
+func (s *Scanner) getResourceRequirements(config starboard.ConfigData) (corev1.ResourceRequirements, error) {
+	requirements := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("50m"),
+			corev1.ResourceMemory: resource.MustParse("100M"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("300m"),
+			corev1.ResourceMemory: resource.MustParse("400M"),
+		},
+	}
+
+	err := setResourceLimit(config, keyResourcesRequestsCPU, &requirements.Requests, corev1.ResourceCPU)
+	if err != nil {
+		return requirements, err
+	}
+
+	err = setResourceLimit(config, keyResourcesRequestsMemory, &requirements.Requests, corev1.ResourceMemory)
+	if err != nil {
+		return requirements, err
+	}
+
+	err = setResourceLimit(config, keyResourcesLimitsCPU, &requirements.Limits, corev1.ResourceCPU)
+	if err != nil {
+		return requirements, err
+	}
+
+	err = setResourceLimit(config, keyResourcesLimitsMemory, &requirements.Limits, corev1.ResourceMemory)
+	if err != nil {
+		return requirements, err
+	}
+
+	return requirements, nil
+}
+
+func setResourceLimit(config starboard.ConfigData, configKey string, k8sResourceList *corev1.ResourceList, k8sResourceName corev1.ResourceName) error {
+	if value, found := config[configKey]; found {
+		quantity, err := resource.ParseQuantity(value)
+		if err != nil {
+			return fmt.Errorf("parsing resource definition %s: %s %w", configKey, value, err)
+		}
+
+		(*k8sResourceList)[k8sResourceName] = quantity
+	}
+	return nil
 }
 
 func isAtLeast(ver string, targetVer string) bool {
