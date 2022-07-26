@@ -216,29 +216,15 @@ func (s *Scanner) prepareKubeHunterJob() (*batchv1.Job, error) {
 }
 
 func (s *Scanner) getResourceRequirements(config starboard.ConfigData) (corev1.ResourceRequirements, error) {
-	useDefault := true
-	for _, configKey := range [...]string{keyResourcesLimitsCPU, keyResourcesLimitsMemory,
-		keyResourcesRequestsCPU, keyResourcesLimitsMemory} {
-		if _, found := config[configKey]; found {
-			useDefault = false
-			break
-		}
-	}
-	if useDefault {
-		return corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("600m"),
-				corev1.ResourceMemory: resource.MustParse("512M"),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("150m"),
-				corev1.ResourceMemory: resource.MustParse("128M"),
-			},
-		}, nil
-	}
 	requirements := corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{},
-		Limits:   corev1.ResourceList{},
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("150m"),
+			corev1.ResourceMemory: resource.MustParse("128M"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("600m"),
+			corev1.ResourceMemory: resource.MustParse("512M"),
+		},
 	}
 
 	err := setResourceLimit(config, keyResourcesRequestsCPU, &requirements.Requests, corev1.ResourceCPU)

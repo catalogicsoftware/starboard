@@ -22,6 +22,13 @@ import (
 	"k8s.io/utils/pointer"
 )
 
+const (
+	keyResourcesRequestsCPU    = "kb.resources.requests.cpu"
+	keyResourcesRequestsMemory = "kb.resources.requests.memory"
+	keyResourcesLimitsCPU      = "kb.resources.limits.cpu"
+	keyResourcesLimitsMemory   = "kb.resources.limits.memory"
+)
+
 type Scanner struct {
 	scheme             *runtime.Scheme
 	clientset          kubernetes.Interface
@@ -110,7 +117,12 @@ func (s *Scanner) Scan(ctx context.Context, node corev1.Node) (v1alpha1.CISKubeB
 }
 
 func (s *Scanner) prepareKubeBenchJob(node corev1.Node) (*batchv1.Job, error) {
-	templateSpec, err := s.plugin.GetScanJobSpec(node)
+	resourceRequirements, err := s.getResourceRequirements(s.config)
+	if err != nil {
+		return nil, err
+	}
+
+	templateSpec, err := s.plugin.GetScanJobSpec(node, resourceRequirements)
 	if err != nil {
 		return nil, err
 	}
@@ -166,12 +178,60 @@ func (s *Scanner) prepareKubeBenchJob(node corev1.Node) (*batchv1.Job, error) {
 	}, nil
 }
 
+func (s *Scanner) getResourceRequirements(config starboard.ConfigData) (corev1.ResourceRequirements, error) {
+	requirements := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("150m"),
+			corev1.ResourceMemory: resource.MustParse("128M"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("600m"),
+			corev1.ResourceMemory: resource.MustParse("512M"),
+		},
+	}
+
+	err := setResourceLimit(config, keyResourcesRequestsCPU, &requirements.Requests, corev1.ResourceCPU)
+	if err != nil {
+		return requirements, err
+	}
+
+	err = setResourceLimit(config, keyResourcesRequestsMemory, &requirements.Requests, corev1.ResourceMemory)
+	if err != nil {
+		return requirements, err
+	}
+
+	err = setResourceLimit(config, keyResourcesLimitsCPU, &requirements.Limits, corev1.ResourceCPU)
+	if err != nil {
+		return requirements, err
+	}
+
+	err = setResourceLimit(config, keyResourcesLimitsMemory, &requirements.Limits, corev1.ResourceMemory)
+	if err != nil {
+		return requirements, err
+	}
+
+	return requirements, nil
+}
+
+func setResourceLimit(config starboard.ConfigData, configKey string, k8sResourceList *corev1.ResourceList, k8sResourceName corev1.ResourceName) error {
+	if value, found := config[configKey]; found {
+		quantity, err := resource.ParseQuantity(value)
+		if err != nil {
+			return fmt.Errorf("parsing resource definition %s: %s %w", configKey, value, err)
+		}
+
+		(*k8sResourceList)[k8sResourceName] = quantity
+	}
+	return nil
+}
+
 const (
 	kubeBenchContainerName = "kube-bench"
 )
 
 type Config interface {
 	GetKubeBenchImageRef() (string, error)
+	// GetResourceRequirements() (corev1.ResourceRequirements, error)
 }
 
 type kubeBenchPlugin struct {
@@ -190,7 +250,7 @@ func NewKubeBenchPlugin(clock ext.Clock, config Config, serviceAccountName strin
 	}
 }
 
-func (k *kubeBenchPlugin) GetScanJobSpec(node corev1.Node) (corev1.PodSpec, error) {
+func (k *kubeBenchPlugin) GetScanJobSpec(node corev1.Node, resourceRequirements corev1.ResourceRequirements) (corev1.PodSpec, error) {
 	imageRef, err := k.config.GetKubeBenchImageRef()
 	if err != nil {
 		return corev1.PodSpec{}, err
@@ -266,16 +326,7 @@ func (k *kubeBenchPlugin) GetScanJobSpec(node corev1.Node) (corev1.PodSpec, erro
 					},
 					ReadOnlyRootFilesystem: pointer.BoolPtr(true),
 				},
-				Resources: corev1.ResourceRequirements{
-					Limits: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("600m"),
-						corev1.ResourceMemory: resource.MustParse("512M"),
-					},
-					Requests: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("150m"),
-						corev1.ResourceMemory: resource.MustParse("128M"),
-					},
-				},
+				Resources: resourceRequirements,
 				VolumeMounts: []corev1.VolumeMount{
 					{
 						Name:      "var-lib-etcd",
