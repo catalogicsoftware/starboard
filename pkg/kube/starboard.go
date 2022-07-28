@@ -1,19 +1,11 @@
 package kube
 
 import (
-	"fmt"
+	"errors"
 	"time"
 )
 
-type OOMKilledErr struct {
-	containerName string
-}
-
-func (e *OOMKilledErr) Error() string {
-	return fmt.Sprintf(
-		"container %s terminated with OOMKilled",
-		e.containerName)
-}
+var ErrOOMKilled = errors.New("OOMKilled")
 
 // ScannerOpts holds configuration of the vulnerability Scanner.
 // TODO Rename to CLIConfig and move it to the cmd package
