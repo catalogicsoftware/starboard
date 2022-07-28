@@ -176,7 +176,13 @@ func (r *runnableJob) getTerminatedContainersErrors(ctx context.Context) error {
 			continue
 		}
 		klog.Errorf("Container %s terminated with %s: %s", container, status.Reason, status.Message)
-		return fmt.Errorf("container %s terminated with %s: %s", container, status.Reason, status.Message)
+		var containerErr error
+		if status.Reason == "OOMKilled" {
+			containerErr = &OOMKilledErr{}
+		} else {
+			containerErr = fmt.Errorf("container %s terminated with %s: %s", container, status.Reason, status.Message)
+		}
+		return containerErr
 	}
 	return nil
 }
