@@ -133,6 +133,11 @@ func NewPlugin(
 	}
 }
 
+func (s *plugin) InitWithConfig(_ starboard.PluginContext, config starboard.ConfigData) error {
+	// Do nothing because aqua not needed
+	return nil
+}
+
 func (s *plugin) Init(_ starboard.PluginContext) error {
 	// Do nothing
 	return nil
