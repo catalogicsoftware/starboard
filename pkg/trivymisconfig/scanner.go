@@ -1,10 +1,10 @@
-package vulnerabilityreport
+package trivymisconfig
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity"
+	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
 	"github.com/aquasecurity/starboard/pkg/kube"
 	"github.com/aquasecurity/starboard/pkg/runner"
 	"github.com/aquasecurity/starboard/pkg/starboard"
@@ -37,20 +37,18 @@ type Scanner struct {
 func NewScanner(
 	clientset kubernetes.Interface,
 	client client.Client,
-	cm kube.CompatibleMgr,
 	plugin Plugin,
 	pluginContext starboard.PluginContext,
 	config starboard.ConfigData,
 	opts kube.ScannerOpts,
 ) *Scanner {
-	or := kube.NewObjectResolver(client, cm)
 	return &Scanner{
 		scheme:         client.Scheme(),
 		clientset:      clientset,
 		opts:           opts,
 		plugin:         plugin,
 		pluginContext:  pluginContext,
-		objectResolver: &or,
+		objectResolver: &kube.ObjectResolver{Client: client},
 		logsReader:     kube.NewLogsReader(clientset),
 		config:         config,
 		secretsReader:  kube.NewSecretsReader(client),
@@ -63,16 +61,13 @@ func NewScanner(
 // or fails. When succeeded it parses container logs and coverts the output
 // to instances of v1alpha1.VulnerabilityReport by delegating such transformation
 // logic also to the Plugin.
-func (s *Scanner) Scan(ctx context.Context) (*aquasecurity.TrivyReport, error) {
-	// defer klog.Flush()
-	// klog.InitFlags(nil)
-	// klog.SetOutput(os.Stdout)
-	// klog.V(3).Infof("Getting Pod template for workload: %v", workload)
+func (s *Scanner) Scan(ctx context.Context, workload kube.ObjectRef) ([]v1alpha1.MisconfigurationReport, error) {
+	klog.V(3).Infof("Getting Pod template for workload: %v", workload)
 
-	// workloadObj, err := s.objectResolver.ObjectFromObjectRef(ctx, workload)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("resolving object: %w", err)
-	// }
+	workloadObj, err := s.objectResolver.ObjectFromObjectRef(ctx, workload)
+	if err != nil {
+		return nil, fmt.Errorf("resolving object: %w", err)
+	}
 
 	// owner, err := s.objectResolver.ReportOwner(ctx, workloadObj)
 	// if err != nil {
@@ -101,12 +96,11 @@ func (s *Scanner) Scan(ctx context.Context) (*aquasecurity.TrivyReport, error) {
 	// 	return nil, err
 	// }
 
-	job, secrets, err := NewScanJobBuilder().
+	job, err := NewScanJobBuilder().
 		WithPlugin(s.plugin).
 		WithPluginContext(s.pluginContext).
 		WithTimeout(s.opts.ScanJobTimeout).
-		// WithObject(owner).
-		// WithCredentials(credentials).
+		WithObject(workloadObj).
 		WithTolerations(scanJobTolerations).
 		WithAnnotations(scanJobAnnotations).
 		WithPodTemplateLabels(scanJobPodTemplateLabels).
@@ -116,7 +110,7 @@ func (s *Scanner) Scan(ctx context.Context) (*aquasecurity.TrivyReport, error) {
 		return nil, fmt.Errorf("constructing scan job: %w", err)
 	}
 
-	err = runner.New().Run(ctx, kube.NewRunnableJob(s.scheme, s.clientset, job, secrets...))
+	err = runner.New().Run(ctx, kube.NewRunnableJob(s.scheme, s.clientset, job))
 	if err != nil {
 		return nil, fmt.Errorf("running scan job: %w", err)
 	}
@@ -135,7 +129,7 @@ func (s *Scanner) Scan(ctx context.Context) (*aquasecurity.TrivyReport, error) {
 
 	klog.V(3).Infof("Scan job completed: %s/%s", job.Namespace, job.Name)
 
-	return s.getVulnerabilityReportsByScanJob(ctx, job)
+	return s.getMisconfigurationReportsByScanJob(ctx, job)
 }
 
 // TODO To make this method look the same as the one used by the operator we
@@ -143,31 +137,38 @@ func (s *Scanner) Scan(ctx context.Context) (*aquasecurity.TrivyReport, error) {
 // passing owner directly. The goal is for CLI and operator to create jobs
 // with the same struct and set of labels to reuse code responsible for parsing
 // v1alpha1.VulnerabilityReport instances.
-func (s *Scanner) getVulnerabilityReportsByScanJob(ctx context.Context, job *batchv1.Job) (*aquasecurity.TrivyReport, error) {
-	// var reports []v1alpha1.VulnerabilityReport
-	// podSpecHash, ok := job.Labels[starboard.LabelResourceSpecHash]
-	// if !ok {
-	// 	return nil, fmt.Errorf("expected label %s not set", starboard.LabelResourceSpecHash)
+func (s *Scanner) getMisconfigurationReportsByScanJob(ctx context.Context, job *batchv1.Job) ([]v1alpha1.MisconfigurationReport, error) {
+	var reports []v1alpha1.MisconfigurationReport
+
+	// containerImages, err := kube.GetContainerImagesFromJob(job)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("getting container images: %w", err)
 	// }
 
-	containerName := "trivyk8scontainer"
-
-	fmt.Printf("Getting logs for %s container in job: %s/%s\n", containerName, job.Namespace, job.Name)
+	// for containerName, containerImage := range containerImages {
+	containerName := "trivymisconfigscancontainer" // TODO: Sync with plugin.go
+	klog.V(3).Infof("Getting logs for %s container in job: %s/%s", containerName, job.Namespace, job.Name)
 	logsStream, err := s.logsReader.GetLogsByJobAndContainerName(ctx, job, containerName)
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO: Return error using another go type
-	trivyReport, err := s.plugin.ParseVulnerabilityReportDataNew(s.pluginContext, logsStream)
+	result, err := s.plugin.ParseMisconfigurationReportData(s.pluginContext, logsStream)
 	if err != nil {
 		return nil, err
 	}
 
-	err = logsStream.Close()
-	if err != nil {
-		klog.V(3).Infof("Logstream close error: %v", err)
+	_ = logsStream.Close()
+
+	report := v1alpha1.MisconfigurationReport{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "report-123",
+			Namespace: "cloudcasa-io",
+		},
+		Report: result,
 	}
 
-	return trivyReport, nil
+	reports = append(reports, report)
+
+	// }
+	return reports, nil
 }

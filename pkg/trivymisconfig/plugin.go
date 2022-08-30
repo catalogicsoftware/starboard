@@ -1,11 +1,9 @@
-package vulnerabilityreport
+package trivymisconfig
 
 import (
 	"io"
 
-	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity"
 	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
-	"github.com/aquasecurity/starboard/pkg/docker"
 	"github.com/aquasecurity/starboard/pkg/starboard"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,13 +23,11 @@ type Plugin interface {
 	// The second argument maps container names to Docker registry credentials,
 	// which can be passed to the scanner as environment variables with values
 	// set from returned secrets.
-	GetScanJobSpec(ctx starboard.PluginContext, workload client.Object, credentials map[string]docker.Auth) (
-		corev1.PodSpec, []*corev1.Secret, error)
+	GetScanJobSpec(ctx starboard.PluginContext, workload client.Object) (
+		corev1.PodSpec, error)
 
-	// ParseVulnerabilityReportData is a callback to parse and convert logs of
-	// the pod controlled by the scan job to v1alpha1.VulnerabilityScanResult.
-	ParseVulnerabilityReportData(ctx starboard.PluginContext, imageRef string, logsReader io.ReadCloser) (
-		v1alpha1.VulnerabilityReportData, error)
-
-	ParseVulnerabilityReportDataNew(ctx starboard.PluginContext, logsReader io.ReadCloser) (*aquasecurity.TrivyReport, error)
+	// ParseMisconfigurationReportData is a callback to parse and convert logs of
+	// the pod controlled by the scan job to v1alpha1.MisconfigurationScanResult.
+	ParseMisconfigurationReportData(ctx starboard.PluginContext, logsReader io.ReadCloser) (
+		v1alpha1.MisconfigurationReportData, error)
 }

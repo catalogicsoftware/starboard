@@ -296,6 +296,31 @@ func GetPodSpec(obj client.Object) (corev1.PodSpec, error) {
 	}
 }
 
+// GetObjectMeta returns ObjectMeta from the specified Kubernetes client.Object.
+// Returns error if the given client.Object is not a Kubernetes workload.
+func GetObjectMeta(obj client.Object) (metav1.ObjectMeta, metav1.TypeMeta, error) {
+	switch t := obj.(type) {
+	case *corev1.Pod:
+		return (obj.(*corev1.Pod)).ObjectMeta, (obj.(*corev1.Pod)).TypeMeta, nil
+	case *appsv1.Deployment:
+		return (obj.(*appsv1.Deployment)).ObjectMeta, (obj.(*appsv1.Deployment)).TypeMeta, nil
+	case *appsv1.ReplicaSet:
+		return (obj.(*appsv1.ReplicaSet)).ObjectMeta, (obj.(*appsv1.ReplicaSet)).TypeMeta, nil
+	case *corev1.ReplicationController:
+		return (obj.(*corev1.ReplicationController)).ObjectMeta, (obj.(*corev1.ReplicationController)).TypeMeta, nil
+	case *appsv1.StatefulSet:
+		return (obj.(*appsv1.StatefulSet)).ObjectMeta, (obj.(*appsv1.StatefulSet)).TypeMeta, nil
+	case *appsv1.DaemonSet:
+		return (obj.(*appsv1.DaemonSet)).ObjectMeta, (obj.(*appsv1.DaemonSet)).TypeMeta, nil
+	case *batchv1beta1.CronJob:
+		return (obj.(*batchv1beta1.CronJob)).Spec.JobTemplate.ObjectMeta, (obj.(*batchv1beta1.CronJob)).TypeMeta, nil
+	case *batchv1.Job:
+		return (obj.(*batchv1.Job)).ObjectMeta, (obj.(*batchv1.Job)).TypeMeta, nil
+	default:
+		return metav1.ObjectMeta{}, metav1.TypeMeta{}, fmt.Errorf("unsupported workload: %T", t)
+	}
+}
+
 var ErrReplicaSetNotFound = errors.New("replicaset not found")
 var ErrNoRunningPods = errors.New("no active pods for controller")
 var ErrUnSupportedKind = errors.New("unsupported workload kind")
@@ -476,7 +501,7 @@ func (o *ObjectResolver) ReplicaSetByDeploymentRef(ctx context.Context, deployme
 
 // ReplicaSetByDeployment returns the current revision of the specified
 // Deployment. If the current revision cannot be found the ErrReplicaSetNotFound
-//error is returned.
+// error is returned.
 func (o *ObjectResolver) ReplicaSetByDeployment(ctx context.Context, deployment *appsv1.Deployment) (*appsv1.ReplicaSet, error) {
 	var rsList appsv1.ReplicaSetList
 	err := o.Client.List(ctx, &rsList,
