@@ -1,4 +1,4 @@
-package vulnerabilityreport
+package trivymisconfig
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
-	"github.com/aquasecurity/starboard/pkg/docker"
 	"github.com/aquasecurity/starboard/pkg/kube"
 	"github.com/aquasecurity/starboard/pkg/starboard"
 	batchv1 "k8s.io/api/batch/v1"
@@ -17,15 +16,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type ScanJobBuilder struct {
-	plugin            Plugin
-	pluginContext     starboard.PluginContext
-	timeout           time.Duration
-	object            client.Object
-	credentials       map[string]docker.Auth
+	plugin        Plugin
+	pluginContext starboard.PluginContext
+	timeout       time.Duration
+	object        client.Object
+	// credentials       map[string]docker.Auth
 	tolerations       []corev1.Toleration
 	annotations       map[string]string
 	podTemplateLabels labels.Set
@@ -70,32 +68,33 @@ func (s *ScanJobBuilder) WithPodTemplateLabels(podTemplateLabels labels.Set) *Sc
 	return s
 }
 
-func (s *ScanJobBuilder) WithCredentials(credentials map[string]docker.Auth) *ScanJobBuilder {
-	s.credentials = credentials
-	return s
-}
+// func (s *ScanJobBuilder) WithCredentials(credentials map[string]docker.Auth) *ScanJobBuilder {
+// 	s.credentials = credentials
+// 	return s
+// }
 
-func (s *ScanJobBuilder) Get() (*batchv1.Job, []*corev1.Secret, error) {
-	// spec, err := kube.GetPodSpec(s.object)
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
-
-	templateSpec, secrets, err := s.plugin.GetScanJobSpec(s.pluginContext, s.object, s.credentials)
+func (s *ScanJobBuilder) Get() (*batchv1.Job, error) {
+	spec, err := kube.GetPodSpec(s.object)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+
+	// s.object is not correct
+	templateSpec, err := s.plugin.GetScanJobSpec(s.pluginContext, s.object)
+	if err != nil {
+		return nil, err
 	}
 	templateSpec.Tolerations = append(templateSpec.Tolerations, s.tolerations...)
 
-	// containerImagesAsJSON, err := kube.GetContainerImagesFromPodSpec(spec).AsJSON()
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
+	containerImagesAsJSON, err := kube.GetContainerImagesFromPodSpec(spec).AsJSON()
+	if err != nil {
+		return nil, err
+	}
 
-	// podSpecHash := kube.ComputeHash(spec)
+	podSpecHash := kube.ComputeHash(spec)
 
 	labelsSet := map[string]string{
-		// starboard.LabelResourceSpecHash:           podSpecHash,
+		starboard.LabelResourceSpecHash:           podSpecHash,
 		starboard.LabelK8SAppManagedBy:            starboard.AppStarboard,
 		starboard.LabelVulnerabilityReportScanner: s.pluginContext.GetName(),
 	}
@@ -109,17 +108,17 @@ func (s *ScanJobBuilder) Get() (*batchv1.Job, []*corev1.Secret, error) {
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        "trivyclusterscanjob",
-			Namespace:   s.pluginContext.GetNamespace(),
-			Labels:      labelsSet,
+			Name:      GetScanJobName(s.object),
+			Namespace: s.pluginContext.GetNamespace(),
+			Labels:    labelsSet,
 			Annotations: map[string]string{
-				// starboard.AnnotationContainerImages: containerImagesAsJSON,
+				starboard.AnnotationContainerImages: containerImagesAsJSON,
 			},
 		},
 		Spec: batchv1.JobSpec{
-			BackoffLimit: pointer.Int32Ptr(0),
-			// Completions:           pointer.Int32Ptr(1),
-			// ActiveDeadlineSeconds: kube.GetActiveDeadlineSeconds(s.timeout),
+			BackoffLimit:          pointer.Int32Ptr(0),
+			Completions:           pointer.Int32Ptr(1),
+			ActiveDeadlineSeconds: kube.GetActiveDeadlineSeconds(s.timeout),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      podTemplateLabelsSet,
@@ -129,23 +128,18 @@ func (s *ScanJobBuilder) Get() (*batchv1.Job, []*corev1.Secret, error) {
 			},
 		},
 	}
-	// secrets will be created with scan jobs in same namespace where scan job will run
-	for i, _ := range secrets {
-		secrets[i].Namespace = s.pluginContext.GetNamespace()
+
+	err = kube.ObjectToObjectMeta(s.object, &job.ObjectMeta)
+	if err != nil {
+		return nil, err
 	}
-	// s.updateScanJobForWorkloadNamespace(job, spec, secrets)
 
-	// err = kube.ObjectToObjectMeta(s.object, &job.ObjectMeta)
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
+	err = kube.ObjectToObjectMeta(s.object, &job.Spec.Template.ObjectMeta)
+	if err != nil {
+		return nil, err
+	}
 
-	// err = kube.ObjectToObjectMeta(s.object, &job.Spec.Template.ObjectMeta)
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
-
-	return job, secrets, nil
+	return job, nil
 }
 
 // When run scan job in workload namespace is enabled then this method will update scanjob spec with these changes
@@ -166,7 +160,7 @@ func (s *ScanJobBuilder) updateScanJobForWorkloadNamespace(job *batchv1.Job, pod
 }
 
 func GetScanJobName(obj client.Object) string {
-	return fmt.Sprintf("scan-vulnerabilityreport-%s", kube.ComputeHash(kube.ObjectRef{
+	return fmt.Sprintf("scan-misconfigreport-%s", kube.ComputeHash(kube.ObjectRef{
 		Kind:      kube.Kind(obj.GetObjectKind().GroupVersionKind().Kind),
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
@@ -182,7 +176,7 @@ type ReportBuilder struct {
 	controller client.Object
 	container  string
 	hash       string
-	data       v1alpha1.VulnerabilityReportData
+	data       v1alpha1.MisconfigurationReportData
 	reportTTL  *time.Duration
 }
 
@@ -207,7 +201,7 @@ func (b *ReportBuilder) PodSpecHash(hash string) *ReportBuilder {
 	return b
 }
 
-func (b *ReportBuilder) Data(data v1alpha1.VulnerabilityReportData) *ReportBuilder {
+func (b *ReportBuilder) Data(data v1alpha1.MisconfigurationReportData) *ReportBuilder {
 	b.data = data
 	return b
 }
@@ -228,7 +222,7 @@ func (b *ReportBuilder) reportName() string {
 	return fmt.Sprintf("%s-%s", strings.ToLower(kind), kube.ComputeHash(name+"-"+b.container))
 }
 
-func (b *ReportBuilder) Get() (v1alpha1.VulnerabilityReport, error) {
+func (b *ReportBuilder) Get() (v1alpha1.MisconfigurationReport, error) {
 	labels := map[string]string{
 		starboard.LabelContainerName: b.container,
 	}
@@ -237,7 +231,7 @@ func (b *ReportBuilder) Get() (v1alpha1.VulnerabilityReport, error) {
 		labels[starboard.LabelResourceSpecHash] = b.hash
 	}
 
-	report := v1alpha1.VulnerabilityReport{
+	report := v1alpha1.MisconfigurationReport{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      b.reportName(),
 			Namespace: b.controller.GetNamespace(),
@@ -246,27 +240,27 @@ func (b *ReportBuilder) Get() (v1alpha1.VulnerabilityReport, error) {
 		Report: b.data,
 	}
 
-	if b.reportTTL != nil {
-		report.Annotations = map[string]string{
-			v1alpha1.TTLReportAnnotation: b.reportTTL.String(),
-		}
-	}
-	err := kube.ObjectToObjectMeta(b.controller, &report.ObjectMeta)
-	if err != nil {
-		return v1alpha1.VulnerabilityReport{}, err
-	}
-	err = controllerutil.SetControllerReference(b.controller, &report, b.scheme)
-	if err != nil {
-		return v1alpha1.VulnerabilityReport{}, fmt.Errorf("setting controller reference: %w", err)
-	}
-	// The OwnerReferencesPermissionsEnforcement admission controller protects the
-	// access to metadata.ownerReferences[x].blockOwnerDeletion of an object, so
-	// that only users with "update" permission to the finalizers subresource of the
-	// referenced owner can change it.
-	// We set metadata.ownerReferences[x].blockOwnerDeletion to false so that
-	// additional RBAC permissions are not required when the OwnerReferencesPermissionsEnforcement
-	// is enabled.
-	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#ownerreferencespermissionenforcement
-	report.OwnerReferences[0].BlockOwnerDeletion = pointer.BoolPtr(false)
+	// if b.reportTTL != nil {
+	// 	report.Annotations = map[string]string{
+	// 		v1alpha1.TTLReportAnnotation: b.reportTTL.String(),
+	// 	}
+	// }
+	// err := kube.ObjectToObjectMeta(b.controller, &report.ObjectMeta)
+	// if err != nil {
+	// 	return v1alpha1.MisconfigurationReport{}, err
+	// }
+	// err = controllerutil.SetControllerReference(b.controller, &report, b.scheme)
+	// if err != nil {
+	// 	return v1alpha1.MisconfigurationReport{}, fmt.Errorf("setting controller reference: %w", err)
+	// }
+	// // The OwnerReferencesPermissionsEnforcement admission controller protects the
+	// // access to metadata.ownerReferences[x].blockOwnerDeletion of an object, so
+	// // that only users with "update" permission to the finalizers subresource of the
+	// // referenced owner can change it.
+	// // We set metadata.ownerReferences[x].blockOwnerDeletion to false so that
+	// // additional RBAC permissions are not required when the OwnerReferencesPermissionsEnforcement
+	// // is enabled.
+	// // See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#ownerreferencespermissionenforcement
+	// report.OwnerReferences[0].BlockOwnerDeletion = pointer.BoolPtr(false)
 	return report, nil
 }

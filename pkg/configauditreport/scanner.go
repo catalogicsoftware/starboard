@@ -109,11 +109,11 @@ func (s *Scanner) policies(ctx context.Context) (*policy.Policies, error) {
 	cm := &corev1.ConfigMap{}
 
 	err := s.client.Get(ctx, client.ObjectKey{
-		Namespace: starboard.NamespaceName,
+		Namespace: "cloudcasa-io", // TODO: Do not hard code
 		Name:      starboard.PoliciesConfigMapName,
 	}, cm)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting policies from configmap: %s/%s: %w", starboard.NamespaceName, starboard.PoliciesConfigMapName, err)
+		return nil, fmt.Errorf("failed getting policies from configmap: cloudcasa-io/%s: %w", starboard.PoliciesConfigMapName, err)
 	}
 	return policy.NewPolicies(cm.Data), nil
 }
