@@ -9,7 +9,9 @@ import (
 	"github.com/aquasecurity/starboard/pkg/plugin/conftest"
 	"github.com/aquasecurity/starboard/pkg/plugin/polaris"
 	"github.com/aquasecurity/starboard/pkg/plugin/trivy"
+	trivymisconfigplugin "github.com/aquasecurity/starboard/pkg/plugin/trivymisconfig"
 	"github.com/aquasecurity/starboard/pkg/starboard"
+	"github.com/aquasecurity/starboard/pkg/trivymisconfig"
 	"github.com/aquasecurity/starboard/pkg/vulnerabilityreport"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -112,4 +114,17 @@ func (r *Resolver) GetConfigAuditPlugin() (configauditreport.Plugin, starboard.P
 		return conftest.NewPlugin(ext.NewGoogleUUIDGenerator(), ext.NewSystemClock()), pluginContext, nil
 	}
 	return nil, nil, fmt.Errorf("unsupported configuration audit scanner plugin: %s", scanner)
+}
+
+func (r *Resolver) GetTrivyMisconfigPlugin() (trivymisconfig.Plugin, starboard.PluginContext, error) {
+
+	pluginContext := starboard.NewPluginContext().
+		WithName("trivymisconfig").
+		WithNamespace(r.namespace).
+		WithServiceAccountName(r.serviceAccountName).
+		WithClient(r.client).
+		WithStarboardConfig(r.config).
+		Get()
+
+	return trivymisconfigplugin.NewPlugin(ext.NewSystemClock(), ext.NewGoogleUUIDGenerator(), r.client), pluginContext, nil
 }
