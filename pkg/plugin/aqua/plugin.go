@@ -2,9 +2,11 @@ package aqua
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
+	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity"
 	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
 	"github.com/aquasecurity/starboard/pkg/docker"
 	"github.com/aquasecurity/starboard/pkg/ext"
@@ -421,6 +423,9 @@ func (s *plugin) ParseVulnerabilityReportData(_ starboard.PluginContext, _ strin
 	return report, err
 }
 
+func (p *plugin) ParseVulnerabilityReportDataNew(ctx starboard.PluginContext, logsReader io.ReadCloser) (*aquasecurity.TrivyReport, error) {
+	return nil, errors.New("Unsuported")
+}
 func (s *plugin) getImageRef(ctx starboard.PluginContext) (string, error) {
 	config, err := ctx.GetConfig()
 	if err != nil {
