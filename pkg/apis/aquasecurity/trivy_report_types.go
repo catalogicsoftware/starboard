@@ -14,7 +14,8 @@ type K8SResourceVulnerability struct {
 	Namespace string
 	Kind      string
 	Name      string
-	Results   []VulnerabilityScanResult
+	Error     string                    `json:"Error,omitempty"`
+	Results   []VulnerabilityScanResult `json:"Results,omitempty"`
 }
 
 type VulnerabilityScanResult struct {
@@ -29,12 +30,6 @@ type Vulnerability struct {
 	PkgName          string `json:"PkgName"`
 	InstalledVersion string `json:"InstalledVersion"`
 	FixedVersion     string `json:"FixedVersion"`
-	Title            string `json:"Title"`
-	Description      string `json:"Description"`
-	Severity         string `json:"Severity"`
-	PrimaryURL       string `json:"PrimaryURL"`
-	// References       []string         `json:"References"`
-	Cvss map[string]*CVSS `json:"CVSS"`
 }
 
 type CVSS struct {
@@ -45,7 +40,8 @@ type K8SResourceMisconfiguration struct {
 	Namespace string
 	Kind      string
 	Name      string
-	Results   []MisconfigurationScanResult
+	Error     string                       `json:"Error,omitempty"`
+	Results   []MisconfigurationScanResult `json:"Results,omitempty"`
 }
 
 type MisconfigurationScanResult struct {

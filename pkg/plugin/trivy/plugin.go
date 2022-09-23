@@ -561,6 +561,7 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 	// if err != nil {
 	// 	return corev1.PodSpec{}, nil, err
 	// }
+	namespace := "default"
 
 	containers = append(containers, corev1.Container{
 		Name:                     "trivyk8scontainer",
@@ -576,6 +577,7 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 			"--quiet",
 			"k8s",
 			"--format=json",
+			fmt.Sprintf("--namespace=%s", namespace),
 			"--no-progress",
 			"cluster",
 		},
