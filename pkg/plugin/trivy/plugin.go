@@ -338,230 +338,14 @@ const (
 //	trivy --cache-dir /tmp/trivy/.cache image --skip-update \
 //	  --format json <container image>
 func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config Config, _ client.Object, credentials map[string]docker.Auth) (corev1.PodSpec, []*corev1.Secret, error) {
-	// var secret *corev1.Secret
 	var secrets []*corev1.Secret
-
-	// spec, err := kube.GetPodSpec(workload)
-	// if err != nil {
-	// 	return corev1.PodSpec{}, nil, err
-	// }
-
-	// if len(credentials) > 0 {
-	// 	secret = p.newSecretWithAggregateImagePullCredentials(workload, spec, credentials)
-	// 	secrets = append(secrets, secret)
-	// }
 
 	trivyImageRef, err := config.GetImageRef()
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
 	}
 
-	// trivyConfigName := starboard.GetPluginConfigMapName(Plugin)
-
-	// dbRepository, err := config.GetDBRepository()
-	// if err != nil {
-	// 	return corev1.PodSpec{}, nil, err
-	// }
-
-	// requirements, err := config.GetResourceRequirements()
-	// if err != nil {
-	// 	return corev1.PodSpec{}, nil, err
-	// }
-
 	var containers []corev1.Container
-
-	// volumeMounts := []corev1.VolumeMount{
-	// 	{
-	// 		Name:      tmpVolumeName,
-	// 		ReadOnly:  false,
-	// 		MountPath: "/tmp",
-	// 	},
-	// }
-	// volumes := []corev1.Volume{
-	// 	{
-	// 		Name: tmpVolumeName,
-	// 		VolumeSource: corev1.VolumeSource{
-	// 			EmptyDir: &corev1.EmptyDirVolumeSource{
-	// 				Medium: corev1.StorageMediumDefault,
-	// 			},
-	// 		},
-	// 	},
-	// }
-
-	// if config.IgnoreFileExists() {
-	// 	volumes = append(volumes, corev1.Volume{
-	// 		Name: ignoreFileVolumeName,
-	// 		VolumeSource: corev1.VolumeSource{
-	// 			ConfigMap: &corev1.ConfigMapVolumeSource{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Items: []corev1.KeyToPath{
-	// 					{
-	// 						Key:  keyTrivyIgnoreFile,
-	// 						Path: ".trivyignore",
-	// 					},
-	// 				},
-	// 			},
-	// 		},
-	// 	})
-
-	// 	volumeMounts = append(volumeMounts, corev1.VolumeMount{
-	// 		Name:      ignoreFileVolumeName,
-	// 		MountPath: "/etc/trivy/.trivyignore",
-	// 		SubPath:   ".trivyignore",
-	// 	})
-	// }
-
-	// env := []corev1.EnvVar{
-	// 	{
-	// 		Name: "TRIVY_SEVERITY",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivySeverity,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// 	{
-	// 		Name: "TRIVY_IGNORE_UNFIXED",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivyIgnoreUnfixed,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// 	{
-	// 		Name: "TRIVY_TIMEOUT",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivyTimeout,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// 	{
-	// 		Name: "TRIVY_SKIP_FILES",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivySkipFiles,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// 	{
-	// 		Name: "TRIVY_SKIP_DIRS",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivySkipDirs,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// 	{
-	// 		Name: "HTTP_PROXY",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivyHTTPProxy,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// 	{
-	// 		Name: "HTTPS_PROXY",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivyHTTPSProxy,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// 	{
-	// 		Name: "NO_PROXY",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: trivyConfigName,
-	// 				},
-	// 				Key:      keyTrivyNoProxy,
-	// 				Optional: pointer.BoolPtr(true),
-	// 			},
-	// 		},
-	// 	},
-	// }
-
-	// region := CheckAwsEcrPrivateRegistry(c.Image)
-	// if region != "" {
-	// 	env = append(env, corev1.EnvVar{
-	// 		Name:  "AWS_REGION",
-	// 		Value: region,
-	// 	})
-	// }
-
-	// if _, ok := credentials[c.Name]; ok && secret != nil {
-	// 	registryUsernameKey := fmt.Sprintf("%s.username", c.Name)
-	// 	registryPasswordKey := fmt.Sprintf("%s.password", c.Name)
-
-	// 	env = append(env, corev1.EnvVar{
-	// 		Name: "TRIVY_USERNAME",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			SecretKeyRef: &corev1.SecretKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: secret.Name,
-	// 				},
-	// 				Key: registryUsernameKey,
-	// 			},
-	// 		},
-	// 	}, corev1.EnvVar{
-	// 		Name: "TRIVY_PASSWORD",
-	// 		ValueFrom: &corev1.EnvVarSource{
-	// 			SecretKeyRef: &corev1.SecretKeySelector{
-	// 				LocalObjectReference: corev1.LocalObjectReference{
-	// 					Name: secret.Name,
-	// 				},
-	// 				Key: registryPasswordKey,
-	// 			},
-	// 		},
-	// 	})
-	// }
-
-	// env, err = p.appendTrivyInsecureEnv(config, c.Image, env)
-	// if err != nil {
-	// 	return corev1.PodSpec{}, nil, err
-	// }
-
-	// env, err = p.appendTrivyNonSSLEnv(config, c.Image, env)
-	// if err != nil {
-	// 	return corev1.PodSpec{}, nil, err
-	// }
-
-	// resourceRequirements, err := config.GetResourceRequirements()
-	// if err != nil {
-	// 	return corev1.PodSpec{}, nil, err
-	// }
-	namespace := "default"
 
 	containers = append(containers, corev1.Container{
 		Name:                     "trivyk8scontainer",
@@ -577,30 +361,15 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 			"--quiet",
 			"k8s",
 			"--format=json",
-			fmt.Sprintf("--namespace=%s", namespace),
 			"--no-progress",
 			"cluster",
 		},
-		// Resources:    resourceRequirements,
-		// VolumeMounts: volumeMounts,
-		// SecurityContext: &corev1.SecurityContext{
-		// 	Privileged:               pointer.BoolPtr(false),
-		// 	AllowPrivilegeEscalation: pointer.BoolPtr(false),
-		// 	Capabilities: &corev1.Capabilities{
-		// 		Drop: []corev1.Capability{"all"},
-		// 	},
-		// 	ReadOnlyRootFilesystem: pointer.BoolPtr(true),
-		// },
 	})
 
 	return corev1.PodSpec{
-		// Affinity:                     starboard.LinuxNodeAffinity(),
 		RestartPolicy:      corev1.RestartPolicyNever,
 		ServiceAccountName: ctx.GetServiceAccountName(),
-		// AutomountServiceAccountToken: pointer.BoolPtr(false),
-		// Volumes:                      volumes,
-		Containers: containers,
-		// SecurityContext: &corev1.PodSecurityContext{},
+		Containers:         containers,
 	}, secrets, nil
 }
 
