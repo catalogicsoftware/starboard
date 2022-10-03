@@ -8,7 +8,6 @@ import (
 	"io"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity"
 	"github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
@@ -928,11 +927,11 @@ func (p *plugin) appendTrivyNonSSLEnv(config Config, image string, env []corev1.
 func (p *plugin) ParseVulnerabilityReportData(ctx starboard.PluginContext, _ string, logsReader io.ReadCloser) (v1alpha1.VulnerabilityReportData, error) {
 
 	var report ScanReport
-	fmt.Println("Decoding container json logs into struct")
-	tStart := time.Now()
+	// tStart := time.Now()
 
 	var b byte
 	var leadingStr strings.Builder
+	defer logsReader.Close()
 	br := bufio.NewReaderSize(logsReader, 2048)
 	for {
 		nextBytes, err := br.Peek(1)
@@ -951,13 +950,14 @@ func (p *plugin) ParseVulnerabilityReportData(ctx starboard.PluginContext, _ str
 			return v1alpha1.VulnerabilityReportData{}, err
 		}
 	}
-	fmt.Println(leadingStr.String())
+	// TODO: Return NewReader(br) from this func
+	// So that caller can read the data in chunks
+	// i.e, s3 upload or a file
 	err := json.NewDecoder(br).Decode(&report)
 	if err != nil {
 		return v1alpha1.VulnerabilityReportData{}, err
 	}
-	tTaken := time.Since(tStart)
-	fmt.Println("Decoding done in", tTaken)
+	// tTaken := time.Since(tStart)
 
 	v1Vulns := []v1alpha1.Vulnerability{}
 	return v1alpha1.VulnerabilityReportData{
@@ -972,8 +972,6 @@ func (p *plugin) ParseVulnerabilityReportData(ctx starboard.PluginContext, _ str
 
 func (p *plugin) ParseVulnerabilityReportDataNew(ctx starboard.PluginContext, logsReader io.ReadCloser) (*aquasecurity.TrivyReport, error) {
 	var report aquasecurity.ScanReport
-	fmt.Println("Decoding container json logs into struct")
-	tStart := time.Now()
 
 	var b byte
 	var leadingStr strings.Builder
@@ -999,8 +997,6 @@ func (p *plugin) ParseVulnerabilityReportDataNew(ctx starboard.PluginContext, lo
 	if err != nil {
 		return nil, err
 	}
-	tTaken := time.Since(tStart)
-	fmt.Println("Decoding done in", tTaken)
 
 	return &aquasecurity.TrivyReport{
 		Report: &report,

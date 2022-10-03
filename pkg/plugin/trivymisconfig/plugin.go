@@ -162,11 +162,6 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 	name := objectMeta.Name
 	namespace := objectMeta.Namespace
 	kind := typeMeta.Kind
-	fmt.Println("name", name, "ns", namespace, "kind", kind)
-	fmt.Println("-----------------------------------------")
-	name = "amds-apiserver"
-	kind = "deployment"
-	namespace = "amds-system"
 
 	var containers []corev1.Container
 	resourceRequirements, err := config.GetResourceRequirements()
