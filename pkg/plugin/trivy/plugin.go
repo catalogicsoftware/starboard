@@ -257,7 +257,7 @@ func (p *plugin) Init(ctx starboard.PluginContext) error {
 			keyTrivyImageRef:     "docker.io/aquasec/trivy:0.31.3",
 			keyTrivySeverity:     "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
 			keyTrivyMode:         string(Standalone),
-			keyTrivyTimeout:      "30m",
+			keyTrivyTimeout:      "2h",
 			keyTrivyDBRepository: defaultDBRepository,
 
 			keyResourcesRequestsCPU:    "100m",
