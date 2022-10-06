@@ -257,7 +257,7 @@ func (p *plugin) Init(ctx starboard.PluginContext) error {
 			keyTrivyImageRef:     "docker.io/aquasec/trivy:0.31.3",
 			keyTrivySeverity:     "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
 			keyTrivyMode:         string(Standalone),
-			keyTrivyTimeout:      "5m0s",
+			keyTrivyTimeout:      "30m",
 			keyTrivyDBRepository: defaultDBRepository,
 
 			keyResourcesRequestsCPU:    "100m",
@@ -344,6 +344,12 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		return corev1.PodSpec{}, nil, err
 	}
 
+	trivyTimeout, err := config.GetRequiredData(keyTrivyTimeout)
+	if err != nil {
+		// default if not provided
+		trivyTimeout = "2h"
+	}
+
 	var containers []corev1.Container
 
 	containers = append(containers, corev1.Container{
@@ -355,12 +361,14 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		Command: []string{
 			"trivy",
 		},
+		// TODO: Externalize/soft code Args array
 		Args: []string{
-			"--timeout=1h",
+			fmt.Sprintf("--timeout=%s", trivyTimeout),
 			"--quiet",
 			"k8s",
 			"--format=json",
 			"--no-progress",
+			"--include-non-failures",
 			"cluster",
 		},
 	})
