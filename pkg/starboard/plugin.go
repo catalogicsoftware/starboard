@@ -61,6 +61,7 @@ type pluginContext struct {
 	namespace          string
 	serviceAccountName string
 	starboardConfig    ConfigData
+	pluginConfig       *PluginConfig
 }
 
 func (p *pluginContext) GetName() string {
@@ -68,6 +69,10 @@ func (p *pluginContext) GetName() string {
 }
 
 func (p *pluginContext) EnsureConfig(config PluginConfig) error {
+	if tempConfig, _ := config.GetRequiredData("temp.config"); tempConfig == "true" {
+		p.pluginConfig = &config
+		return nil
+	}
 	err := p.client.Create(context.Background(), &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: p.namespace,
@@ -85,6 +90,9 @@ func (p *pluginContext) EnsureConfig(config PluginConfig) error {
 }
 
 func (p *pluginContext) GetConfig() (PluginConfig, error) {
+	if p.pluginConfig != nil {
+		return *p.pluginConfig, nil
+	}
 	cm := &corev1.ConfigMap{}
 	secret := &corev1.Secret{}
 
