@@ -37,6 +37,7 @@ const (
 	keyTrivyImageRef               = "trivy.imageRef"
 	keyTrivyMode                   = "trivy.mode"
 	keyTrivyCommand                = "trivy.command"
+	keyTrivyArgs                   = "trivy.args"
 	keyTrivySeverity               = "trivy.severity"
 	keyTrivyIgnoreUnfixed          = "trivy.ignoreUnfixed"
 	keyTrivyTimeout                = "trivy.timeout"
@@ -90,6 +91,29 @@ type Config struct {
 // GetImageRef returns upstream Trivy container image reference.
 func (c Config) GetImageRef() (string, error) {
 	return c.GetRequiredData(keyTrivyImageRef)
+}
+
+// GetTrivyTimeout returns timeout provided to the trivy command
+func (c Config) GetTrivyTimeout() (string, error) {
+	return c.GetRequiredData(keyTrivyTimeout)
+}
+
+// GetCmdArgs returns arguments that should be passed to the trivy command
+func (c Config) GetCmdArgs() ([]string, error) {
+	cmdArgs := []string{}
+	strArgs, err := c.GetRequiredData(keyTrivyArgs)
+	if err != nil {
+		return []string{
+			"--quiet",
+			"k8s",
+			"--format=json",
+			"--no-progress",
+			"--include-non-failures",
+			"cluster",
+		}, nil
+	}
+	err = json.Unmarshal([]byte(strArgs), &cmdArgs)
+	return cmdArgs, err
 }
 
 func (c Config) GetMode() (Mode, error) {
@@ -253,55 +277,64 @@ func NewPlugin(clock ext.Clock, idGenerator ext.IDGenerator, client client.Clien
 // Init ensures the default Config required by this plugin.
 func (p *plugin) Init(ctx starboard.PluginContext) error {
 	return ctx.EnsureConfig(starboard.PluginConfig{
-		Data: map[string]string{
-			keyTrivyImageRef:     "docker.io/aquasec/trivy:0.31.3",
-			keyTrivySeverity:     "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-			keyTrivyMode:         string(Standalone),
-			keyTrivyTimeout:      "2h",
-			keyTrivyDBRepository: defaultDBRepository,
+		Data: p.getDefaultConfig(),
+	})
+}
 
-			keyResourcesRequestsCPU:    "100m",
-			keyResourcesRequestsMemory: "100M",
-			keyResourcesLimitsCPU:      "500m",
-			keyResourcesLimitsMemory:   "500M",
-		},
+func (p *plugin) getDefaultConfig() map[string]string {
+	return map[string]string{
+		keyTrivyImageRef:     "docker.io/aquasec/trivy:0.31.3",
+		keyTrivySeverity:     "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
+		keyTrivyMode:         string(Standalone),
+		keyTrivyTimeout:      "2h",
+		keyTrivyDBRepository: defaultDBRepository,
+
+		keyResourcesRequestsCPU:    "100m",
+		keyResourcesRequestsMemory: "100M",
+		keyResourcesLimitsCPU:      "500m",
+		keyResourcesLimitsMemory:   "500M",
+	}
+}
+
+// InitWithPluginConfig ensures the Config required by this plugin
+func (p *plugin) InitWithPluginConfig(ctx starboard.PluginContext, providedConfig map[string]string) error {
+	defaultConfig := p.getDefaultConfig()
+	finalConfig := map[string]string{
+		"temp.config": "true",
+		"trivy.args":  ``,
+	}
+	for key, val := range defaultConfig {
+		finalConfig[key] = val
+	}
+	for key, val := range providedConfig {
+		finalConfig[key] = val
+	}
+	return ctx.EnsureConfig(starboard.PluginConfig{
+		Data: finalConfig,
 	})
 }
 
 func (p *plugin) GetScanJobSpec(ctx starboard.PluginContext, workload client.Object, credentials map[string]docker.Auth) (corev1.PodSpec, []*corev1.Secret, error) {
+	// loads from configmap
 	config, err := p.newConfigFrom(ctx)
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
 	}
+	// TODO: Do not load from configmap
 
 	mode, err := config.GetMode()
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
 	}
 
-	command, err := config.GetCommand()
-
-	if command == Image {
-		switch mode {
-		case Standalone:
-			return p.getPodSpecForStandaloneMode(ctx, config, workload, credentials)
-		case ClientServer:
-			return p.getPodSpecForClientServerMode(ctx, config, workload, credentials)
-		default:
-			return corev1.PodSpec{}, nil, fmt.Errorf("unrecognized trivy mode %q for command %q", mode, command)
-		}
+	switch mode {
+	case Standalone:
+		return p.getPodSpecForStandaloneMode(ctx, config, workload, credentials)
+	case ClientServer:
+		return p.getPodSpecForClientServerMode(ctx, config, workload, credentials)
+	default:
+		return corev1.PodSpec{}, nil, fmt.Errorf("unrecognized trivy mode %q", mode)
 	}
-
-	if command == Filesystem {
-		switch mode {
-		case Standalone:
-			return p.getPodSpecForStandaloneFSMode(ctx, config, workload)
-		default:
-			return corev1.PodSpec{}, nil, fmt.Errorf("unrecognized trivy mode %q for command %q", mode, command)
-		}
-	}
-
-	return corev1.PodSpec{}, nil, fmt.Errorf("unrecognized trivy command %q", command)
 }
 
 func (p *plugin) newSecretWithAggregateImagePullCredentials(obj client.Object, spec corev1.PodSpec, credentials map[string]docker.Auth) *corev1.Secret {
@@ -344,11 +377,18 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		return corev1.PodSpec{}, nil, err
 	}
 
-	trivyTimeout, err := config.GetRequiredData(keyTrivyTimeout)
+	trivyTimeout, err := config.GetTrivyTimeout()
 	if err != nil {
-		// default if not provided
-		trivyTimeout = "2h"
+		return corev1.PodSpec{}, nil, err
 	}
+
+	args, err := config.GetCmdArgs()
+	if err != nil {
+		return corev1.PodSpec{}, nil, err
+	}
+
+	foo := []string{}
+	json.Unmarshal([]byte(`["hello","world"]`), &foo)
 
 	var containers []corev1.Container
 
@@ -357,20 +397,15 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		Image:                    trivyImageRef,
 		ImagePullPolicy:          corev1.PullIfNotPresent,
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-		// Env:                      env,
+		// TODO: Get every config as a env var
+		Env: []corev1.EnvVar{{
+			Name:  "TRIVY_TIMEOUT",
+			Value: trivyTimeout,
+		}},
 		Command: []string{
 			"trivy",
 		},
-		// TODO: Externalize/soft code Args array
-		Args: []string{
-			fmt.Sprintf("--timeout=%s", trivyTimeout),
-			"--quiet",
-			"k8s",
-			"--format=json",
-			"--no-progress",
-			"--include-non-failures",
-			"cluster",
-		},
+		Args: args,
 	})
 
 	return corev1.PodSpec{

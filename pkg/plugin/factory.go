@@ -40,6 +40,7 @@ func (r *Resolver) WithBuildInfo(buildInfo starboard.BuildInfo) *Resolver {
 	return r
 }
 
+// WithConfig inits with new starboard config
 func (r *Resolver) WithConfig(config starboard.ConfigData) *Resolver {
 	r.config = config
 	return r

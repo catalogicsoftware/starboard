@@ -140,6 +140,11 @@ func (s *plugin) Init(_ starboard.PluginContext) error {
 	return nil
 }
 
+func (s *plugin) InitWithPluginConfig(_ starboard.PluginContext, _ map[string]string) error {
+	// Do nothing
+	return nil
+}
+
 func (s *plugin) GetScanJobSpec(ctx starboard.PluginContext, object client.Object,
 	_ map[string]docker.Auth) (corev1.PodSpec, []*corev1.Secret, error) {
 	config, err := s.newConfigFrom(ctx)
