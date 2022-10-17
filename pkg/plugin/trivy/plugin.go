@@ -386,9 +386,7 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
 	}
-
-	foo := []string{}
-	json.Unmarshal([]byte(`["hello","world"]`), &foo)
+	fmt.Printf("Running trivy with args = %v\n", args)
 
 	var containers []corev1.Container
 
