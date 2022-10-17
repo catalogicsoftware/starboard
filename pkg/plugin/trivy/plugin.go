@@ -100,20 +100,16 @@ func (c Config) GetTrivyTimeout() (string, error) {
 
 // GetCmdArgs returns arguments that should be passed to the trivy command
 func (c Config) GetCmdArgs() ([]string, error) {
-	cmdArgs := []string{}
 	strArgs, err := c.GetRequiredData(keyTrivyArgs)
 	if err != nil {
-		return []string{
-			"--quiet",
-			"k8s",
-			"--format=json",
-			"--no-progress",
-			"--include-non-failures",
-			"cluster",
-		}, nil
+		return nil, err
 	}
+	cmdArgs := []string{}
 	err = json.Unmarshal([]byte(strArgs), &cmdArgs)
-	return cmdArgs, err
+	if err != nil {
+		return fmt.Errorf("non-json trivy args: %v", strArgs)
+	}
+	return cmdArgs, nil
 }
 
 func (c Config) GetMode() (Mode, error) {
@@ -301,7 +297,7 @@ func (p *plugin) InitWithPluginConfig(ctx starboard.PluginContext, providedConfi
 	defaultConfig := p.getDefaultConfig()
 	finalConfig := map[string]string{
 		"temp.config": "true",
-		"trivy.args":  ``,
+		"trivy.args":  `["--quiet","k8s","--format=json","--no-progress","--include-non-failures","cluster"]`,
 	}
 	for key, val := range defaultConfig {
 		finalConfig[key] = val
@@ -382,6 +378,7 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		return corev1.PodSpec{}, nil, err
 	}
 
+	fmt.Println("Getting cmd args")
 	args, err := config.GetCmdArgs()
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
