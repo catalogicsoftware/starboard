@@ -107,7 +107,7 @@ func (c Config) GetCmdArgs() ([]string, error) {
 	cmdArgs := []string{}
 	err = json.Unmarshal([]byte(strArgs), &cmdArgs)
 	if err != nil {
-		return fmt.Errorf("non-json trivy args: %v", strArgs)
+		return nil, fmt.Errorf("non-json trivy args: %v", strArgs)
 	}
 	return cmdArgs, nil
 }
