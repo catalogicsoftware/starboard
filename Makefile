@@ -28,7 +28,7 @@ MKDOCS_PORT := 8000
 all: build
 
 .PHONY: build
-build: build-starboard-cli build-starboard-operator build-starboard-scanner-aqua
+build: build-starboard-cli
 
 ## Builds the starboard binary
 build-starboard-cli: $(SOURCES)
@@ -38,9 +38,9 @@ build-starboard-cli: $(SOURCES)
 build-starboard-operator: $(SOURCES)
 	CGO_ENABLED=0 GOOS=linux go build -o ./bin/starboard-operator ./cmd/starboard-operator/main.go
 
-## Builds the scanner-aqua binary
-build-starboard-scanner-aqua: $(SOURCES)
-	CGO_ENABLED=0 GOOS=linux go build -o ./bin/starboard-scanner-aqua ./cmd/scanner-aqua/main.go
+# ## Builds the scanner-aqua binary
+# build-starboard-scanner-aqua: $(SOURCES)
+# 	CGO_ENABLED=0 GOOS=linux go build -o ./bin/starboard-scanner-aqua ./cmd/scanner-aqua/main.go
 
 .PHONY: get-ginkgo
 ## Installs Ginkgo CLI
