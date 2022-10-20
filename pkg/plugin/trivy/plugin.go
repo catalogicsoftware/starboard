@@ -1042,6 +1042,12 @@ func (p *plugin) ParseVulnerabilityReportDataNew(ctx starboard.PluginContext, lo
 	}, nil
 }
 
+// GetJSONLogStream returns json report
+func (p *plugin) GetJSONLogStream(ctx starboard.PluginContext, logsReader io.ReadCloser) (io.ReadCloser, error) {
+	// TODO: return the jsonIterator
+	return NewReader(logsReader), nil
+}
+
 func (p *plugin) newConfigFrom(ctx starboard.PluginContext) (Config, error) {
 	pluginConfig, err := ctx.GetConfig()
 	if err != nil {
