@@ -53,7 +53,8 @@ type MisconfigurationScanResult struct {
 }
 
 type Misconfiguration struct {
-	ID       string
-	Status   string
-	Severity string
+	ID               string
+	Status           string
+	Severity         string
+	MisconfNamespace string
 }
