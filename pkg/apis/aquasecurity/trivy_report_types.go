@@ -30,6 +30,7 @@ type Vulnerability struct {
 	PkgName          string `json:"PkgName"`
 	InstalledVersion string `json:"InstalledVersion"`
 	FixedVersion     string `json:"FixedVersion"`
+	Severity         string `json:"Severity"`
 }
 
 type CVSS struct {
@@ -52,6 +53,7 @@ type MisconfigurationScanResult struct {
 }
 
 type Misconfiguration struct {
-	ID     string
-	Status string
+	ID       string
+	Status   string
+	Severity string
 }
