@@ -297,7 +297,7 @@ func (p *plugin) InitWithPluginConfig(ctx starboard.PluginContext, providedConfi
 	defaultConfig := p.getDefaultConfig()
 	finalConfig := map[string]string{
 		"temp.config": "true",
-		"trivy.args":  `["--quiet","k8s","--format=json","--no-progress","--include-non-failures","cluster"]`,
+		"trivy.args":  `["trivy --quiet k8s --format=json --output=/var/report/trivy.json --no-progress --include-non-failures cluster && touch /tmp/done.txt && until [ ! -f /var/report/trivy.json ]; do sleep 5; done"]`,
 	}
 	for key, val := range defaultConfig {
 		finalConfig[key] = val
@@ -349,6 +349,7 @@ const (
 	tmpVolumeName               = "tmp"
 	ignoreFileVolumeName        = "ignorefile"
 	FsSharedVolumeName          = "starboard"
+	reportVolumeName            = "jsonreport"
 	SharedVolumeLocationOfTrivy = "/var/starboard/trivy"
 )
 
@@ -384,21 +385,37 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		return corev1.PodSpec{}, nil, err
 	}
 	fmt.Printf("Running trivy with args = %v\n", args)
-
+	volumes := []corev1.Volume{
+		{
+			Name: reportVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumDefault,
+				},
+			},
+		},
+	}
+	volumeMounts := []corev1.VolumeMount{
+		{
+			Name:      reportVolumeName,
+			ReadOnly:  false,
+			MountPath: "/var/report",
+		},
+	}
 	var containers []corev1.Container
-
 	containers = append(containers, corev1.Container{
-		Name:                     "trivyk8scontainer",
+		Name:                     "trivy",
 		Image:                    trivyImageRef,
 		ImagePullPolicy:          corev1.PullIfNotPresent,
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+		VolumeMounts:             volumeMounts,
 		// TODO: Get every config as a env var
 		Env: []corev1.EnvVar{{
 			Name:  "TRIVY_TIMEOUT",
 			Value: trivyTimeout,
 		}},
 		Command: []string{
-			"trivy",
+			"sh", "-c",
 		},
 		Args: args,
 	})
@@ -407,6 +424,7 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		RestartPolicy:      corev1.RestartPolicyNever,
 		ServiceAccountName: ctx.GetServiceAccountName(),
 		Containers:         containers,
+		Volumes:            volumes,
 	}, secrets, nil
 }
 
@@ -1044,8 +1062,9 @@ func (p *plugin) ParseVulnerabilityReportDataNew(ctx starboard.PluginContext, lo
 
 // GetJSONLogStream returns json report
 func (p *plugin) GetJSONLogStream(ctx starboard.PluginContext, logsReader io.ReadCloser) (io.ReadCloser, error) {
+	return logsReader, nil
 	// TODO: return the jsonIterator
-	return NewReader(logsReader), nil
+	// return NewReader(logsReader), nil
 }
 
 func (p *plugin) newConfigFrom(ctx starboard.PluginContext) (Config, error) {
