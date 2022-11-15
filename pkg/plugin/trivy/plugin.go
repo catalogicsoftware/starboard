@@ -37,7 +37,7 @@ const (
 	keyTrivyImageRef               = "trivy.imageRef"
 	keyTrivyMode                   = "trivy.mode"
 	keyTrivyCommand                = "trivy.command"
-	keyTrivyArgs                   = "trivy.args"
+	keyTrivyStartupScript          = "trivy.shScript"
 	keyTrivySeverity               = "trivy.severity"
 	keyTrivyIgnoreUnfixed          = "trivy.ignoreUnfixed"
 	keyTrivyTimeout                = "trivy.timeout"
@@ -98,18 +98,13 @@ func (c Config) GetTrivyTimeout() (string, error) {
 	return c.GetRequiredData(keyTrivyTimeout)
 }
 
-// GetCmdArgs returns arguments that should be passed to the trivy command
-func (c Config) GetCmdArgs() ([]string, error) {
-	strArgs, err := c.GetRequiredData(keyTrivyArgs)
+// GetStartupScript returns arguments that should be passed to the trivy command
+func (c Config) GetStartupScript() (string, error) {
+	strScript, err := c.GetRequiredData(keyTrivyStartupScript)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	cmdArgs := []string{}
-	err = json.Unmarshal([]byte(strArgs), &cmdArgs)
-	if err != nil {
-		return nil, fmt.Errorf("non-json trivy args: %v", strArgs)
-	}
-	return cmdArgs, nil
+	return strScript, nil
 }
 
 func (c Config) GetMode() (Mode, error) {
@@ -379,12 +374,12 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		return corev1.PodSpec{}, nil, err
 	}
 
-	fmt.Println("Getting cmd args")
-	args, err := config.GetCmdArgs()
+	fmt.Println("Getting startup script")
+	script, err := config.GetStartupScript()
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
 	}
-	fmt.Printf("Running trivy with args = %v\n", args)
+	fmt.Printf("Running trivy with script = %v\n", script)
 	volumes := []corev1.Volume{
 		{
 			Name: reportVolumeName,
@@ -417,7 +412,7 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		Command: []string{
 			"sh", "-c",
 		},
-		Args: args,
+		Args: []string{script},
 	})
 
 	return corev1.PodSpec{
