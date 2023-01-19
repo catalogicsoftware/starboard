@@ -374,12 +374,10 @@ func (p *plugin) getPodSpecForStandaloneMode(ctx starboard.PluginContext, config
 		return corev1.PodSpec{}, nil, err
 	}
 
-	fmt.Println("Getting startup script")
 	script, err := config.GetStartupScript()
 	if err != nil {
 		return corev1.PodSpec{}, nil, err
 	}
-	fmt.Printf("Running trivy with script = %v\n", script)
 	volumes := []corev1.Volume{
 		{
 			Name: reportVolumeName,
